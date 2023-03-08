@@ -25,6 +25,8 @@ configuration:
       type: [string, array]
     init-image:
       type: string
+    build-directory-fsgroup:
+      type: integer
     mount-hostpath:
       type: [string, array]
     mount-secret:

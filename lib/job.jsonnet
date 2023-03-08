@@ -309,10 +309,6 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     else 
       {fsGroup: std.parseInt(env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP)},
   
-  local fsUser =
-    if env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER == '' then []
-    else
-      {fsUser: std.parseInt(env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER)},
 
 
   apiVersion: 'batch/v1',
@@ -341,7 +337,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
         initContainers: initContainers,
         imagePullSecrets: imagePullSecrets,
         securityContext: {}
-        + fsGroup + fsUser,
+        + fsGroup,
         containers: [
           {
             name: 'step',
