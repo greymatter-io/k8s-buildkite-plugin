@@ -25,8 +25,8 @@ configuration:
       type: [string, array]
     init-image:
       type: string
-    build-directory-fsgroup:
-      type: integer
+    # build-directory-fsgroup:
+    #   type: integer
     mount-hostpath:
       type: [string, array]
     mount-secret:
@@ -59,9 +59,9 @@ configuration:
       type: string
     git-mirrors-host-path:
       type: string
-    runAsUser:
+    run-as-user:
       type: int
-    runAsGroup:
+    run-as-group:
       type: int
     workdir:
       type: string

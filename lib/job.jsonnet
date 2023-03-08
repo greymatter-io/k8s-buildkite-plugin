@@ -36,8 +36,8 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP: '',
     BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER: '',
     BUILDKITE_PLUGIN_K8S_GIT_MIRRORS_HOST_PATH: '',
-    BUILDKITE_PLUGIN_K8S_RUNASUSER: '',
-    BUILDKITE_PLUGIN_K8S_RUNASGROUP: '',
+    BUILDKITE_PLUGIN_K8S_RUN_AS_USER: '',
+    BUILDKITE_PLUGIN_K8S_RUN_AS_GROUP: '',
     BUILDKITE_PLUGIN_K8S_MOUNT_SECRET: '',
     BUILDKITE_PLUGIN_K8S_MOUNT_BUILDKITE_AGENT: 'true',
     BUILDKITE_PLUGIN_K8S_PRIVILEGED: 'false',
@@ -312,14 +312,14 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       {fsGroup: std.parseInt(env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP)},
   
   local runAsUser =
-    if env.BUILDKITE_PLUGIN_K8S_RUNASUSER == '' then {}
+    if env.BUILDKITE_PLUGIN_K8S_RUN_AS_USER == '' then {}
     else
-      {runAsUser: std.parseInt(env.BUILDKITE_PLUGIN_K8S_RUNASUSER)},
+      {runAsUser: std.parseInt(env.BUILDKITE_PLUGIN_K8S_RUN_AS_USER)},
 
   local runAsGroup =
-    if env.BUILDKITE_PLUGIN_K8S_RUNASGROUP == '' then {}
+    if env.BUILDKITE_PLUGIN_K8S_RUN_AS_GROUP == '' then {}
     else
-      {runAsGroup: std.parseInt(env.BUILDKITE_PLUGIN_K8S_RUNASGROUP)},
+      {runAsGroup: std.parseInt(env.BUILDKITE_PLUGIN_K8S_RUN_AS_GROUP)},
 
   apiVersion: 'batch/v1',
   kind: 'Job',
