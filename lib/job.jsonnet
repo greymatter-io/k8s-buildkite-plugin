@@ -307,12 +307,12 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
   local fsGroup =
     if env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP == '' then []
     else 
-      {fsGroup: env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP},
+      {fsGroup: std.parseInt(env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP)},
   
   local fsUser =
     if env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER == '' then []
     else
-      {fsUser: env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER},
+      {fsUser: std.parseInt(env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER)},
 
 
   apiVersion: 'batch/v1',
