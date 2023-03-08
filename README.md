@@ -226,7 +226,6 @@ Describes the ClusterStore to pull ExternalSecrets from.
 
 Must be used with the ``external-secrets`` argument and cannot be used with the ``secret-store`` argument
 
-
 ### `build-path-host-path` (optional, string)
 
 Optionally mount a [host path](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath) to be used as base directory for buildkite builds. This allows local caching and incremental builds using fast local storage.
@@ -246,6 +245,12 @@ Optionally mount a [host path](https://kubernetes.io/docs/concepts/storage/volum
 Should be used with some care, since the actual storage used is outside the control of Kubernetes itself.
 
 Example: `/var/lib/buildkite/builds`
+
+### `run-as-user` (optional, integer)
+Set the uid of the user in the job container. Sets the `runAsUser` SecurityContext.
+
+### `run-as-group` (optional, integer)
+Set the gid of the user in the job container. Sets the `runAsGroup` Security Context.
 
 ### `resources-request-cpu` (optional, string)
 
