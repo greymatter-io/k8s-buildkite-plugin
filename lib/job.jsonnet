@@ -33,6 +33,8 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET: '',
     BUILDKITE_PLUGIN_K8S_BUILD_PATH_HOST_PATH: '',
     BUILDKITE_PLUGIN_K8S_BUILD_PATH_PVC: '',
+    BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP: '',
+    BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER: '',
     BUILDKITE_PLUGIN_K8S_GIT_MIRRORS_HOST_PATH: '',
     BUILDKITE_PLUGIN_K8S_MOUNT_SECRET: '',
     BUILDKITE_PLUGIN_K8S_MOUNT_BUILDKITE_AGENT: 'true',
@@ -302,6 +304,18 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
         {name: env.BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET},
     ],
 
+  local fsGroup =
+    if env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP == '' then []
+    else [
+      {fsgroup: env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP},
+    ],
+  
+  local fsUser =
+    if env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER == '' then []
+    else [
+      {fsuser: env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER},
+    ],
+
   apiVersion: 'batch/v1',
   kind: 'Job',
   metadata: {
@@ -337,7 +351,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
             envFrom: secretEnv,
             securityContext: {
               privileged: std.asciiLower(env.BUILDKITE_PLUGIN_K8S_PRIVILEGED) == 'true',
-            },
+            } + fsGroup + fsUser,
             resources: {
               requests:
                 (if env.BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_CPU != '' then
