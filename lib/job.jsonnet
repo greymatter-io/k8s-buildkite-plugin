@@ -314,6 +314,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     else
       {fsUser: env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER},
 
+
   apiVersion: 'batch/v1',
   kind: 'Job',
   metadata: {
@@ -339,7 +340,8 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
         serviceAccountName: env.BUILDKITE_PLUGIN_K8S_SERVICE_ACCOUNT_NAME,
         initContainers: initContainers,
         imagePullSecrets: imagePullSecrets,
-
+        securityContext: {}
+        + fsGroup + fsUser,
         containers: [
           {
             name: 'step',
@@ -349,7 +351,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
             envFrom: secretEnv,
             securityContext: {
               privileged: std.asciiLower(env.BUILDKITE_PLUGIN_K8S_PRIVILEGED) == 'true',
-            } + fsGroup + fsUser,
+            },
             resources: {
               requests:
                 (if env.BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_CPU != '' then
