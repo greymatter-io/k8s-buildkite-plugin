@@ -59,6 +59,10 @@ configuration:
       type: string
     git-mirrors-host-path:
       type: string
+    runAsUser:
+      type: int
+    runAsGroup:
+      type: int
     workdir:
       type: string
     patch:
