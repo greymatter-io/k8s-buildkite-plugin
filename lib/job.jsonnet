@@ -317,7 +317,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       {runAsUser: std.parseInt(env.BUILDKITE_PLUGIN_K8S_RUNASUSER)},
 
   local runAsGroup =
-    if env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_RUNASGROUP == '' then {}
+    if env.BUILDKITE_PLUGIN_K8S_BUILD_RUNASGROUP == '' then {}
     else
       {runAsGroup: std.parseInt(env.BUILDKITE_PLUGIN_K8S_RUNASGROUP)},
 
