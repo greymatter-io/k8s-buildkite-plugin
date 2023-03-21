@@ -75,7 +75,7 @@ function tail_logs {
   while true;
   do
     set +e
-    log_snapshot="$(timeout "$log_attempt_timeout_sec" kubectl logs --limit-bytes "1024" "pod/$pod_name" --container "$container_name" 2>/dev/null)"
+    log_snapshot="$(timeout "$log_attempt_timeout_sec" kubectl logs --limit-bytes "1024" "pod/$pod_name" --container "$container_name")"
     set -e
     if [[ -n "$log_snapshot" ]]; then
       break
