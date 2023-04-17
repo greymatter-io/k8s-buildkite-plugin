@@ -33,8 +33,6 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET: '',
     BUILDKITE_PLUGIN_K8S_BUILD_PATH_HOST_PATH: '',
     BUILDKITE_PLUGIN_K8S_BUILD_PATH_PVC: '',
-    BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP: '',
-    BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSUSER: '',
     BUILDKITE_PLUGIN_K8S_GIT_MIRRORS_HOST_PATH: '',
     BUILDKITE_PLUGIN_K8S_RUN_AS_USER: '',
     BUILDKITE_PLUGIN_K8S_RUN_AS_GROUP: '',
@@ -306,11 +304,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
         {name: env.BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET},
     ],
 
-  local fsGroup =
-    if env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP == '' then {}
-    else 
-      {fsGroup: std.parseInt(env.BUILDKITE_PLUGIN_K8S_BUILD_DIRECTORY_FSGROUP)},
-  
+
   local runAsUser =
     if env.BUILDKITE_PLUGIN_K8S_RUN_AS_USER == '' then {}
     else
@@ -347,7 +341,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
         initContainers: initContainers,
         imagePullSecrets: imagePullSecrets,
         securityContext: {}
-        + fsGroup + runAsGroup + runAsUser,
+        + runAsGroup + runAsUser,
         containers: [
           {
             name: 'step',
