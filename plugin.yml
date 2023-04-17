@@ -60,6 +60,10 @@ configuration:
       type: string
     git-mirrors-host-path:
       type: string
+    run-as-user:
+      type: int
+    run-as-group:
+      type: int
     workdir:
       type: string
     patch:
