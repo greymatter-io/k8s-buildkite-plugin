@@ -255,6 +255,12 @@ Should be used with some care, since the actual storage used is outside the cont
 
 Example: `/var/lib/buildkite/builds`
 
+### `run-as-user` (optional, integer)
+Set the uid of the user in the job container. Sets the `runAsUser` SecurityContext.
+
+### `run-as-group` (optional, integer)
+Set the gid of the user in the job container. Sets the `runAsGroup` Security Context.
+
 ### `resources-request-cpu` (optional, string)
 
 Sets [cpu request](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/) for the build container.
