@@ -333,6 +333,17 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
         annotations: annotations { 'sidecar.istio.io/inject': 'false' },
       },
       spec: {
+        nodeSelector: {
+          "greymatter.io/build-system": "builders",
+        }
+        tolerations: [
+          {
+            key: "greymatter.io/build-system",
+            operator: "Equal",
+            value: "builders",
+            effect: "NoSchedule"
+          }
+        ]
         activeDeadlineSeconds: deadline,
         restartPolicy: 'Never',
         serviceAccountName: env.BUILDKITE_PLUGIN_K8S_SERVICE_ACCOUNT_NAME,
