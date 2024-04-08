@@ -335,7 +335,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       spec: {
         nodeSelector: {
           "greymatter.io/build-system": "builders",
-        }
+        },
         tolerations: [
           {
             key: "greymatter.io/build-system",
@@ -343,7 +343,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
             value: "builders",
             effect: "NoSchedule"
           }
-        ]
+        ],
         activeDeadlineSeconds: deadline,
         restartPolicy: 'Never',
         serviceAccountName: env.BUILDKITE_PLUGIN_K8S_SERVICE_ACCOUNT_NAME,
