@@ -40,7 +40,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
         name: jobName,
     },
     spec: {
-        refreshInterval: "15s",
+        refreshInterval: "1h",
         secretStoreRef: {
             name: storeName,
             kind: storeType,
