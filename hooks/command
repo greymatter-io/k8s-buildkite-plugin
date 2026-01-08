@@ -98,7 +98,6 @@ function tail_logs {
 # External Secrets Handler
 if [[ -n $external_secrets || -n $external_secrets_list || -n $secret_store || -n $cluster_store ]]; then
   echo "--- :kubernetes: Creating Secrets"
-  
   # Check if the ExternalSecrets CRD exists
   if [[ -z $(kubectl get crd externalsecrets.external-secrets.io 2>/dev/null) ]]; then
     echo "External Secrets CRD not found. Is the External Secrets Operator installed in the cluster?" >&2
@@ -109,8 +108,8 @@ if [[ -n $external_secrets || -n $external_secrets_list || -n $secret_store || -
   if [[ -n $secret_store && -n $cluster_store ]]; then
     echo "A ClusterStore and SecretStore cannot be used in the same step.. Exiting."
     exit 42
-  fi 
-  
+  fi
+
   # If a store is defined, make sure secrets are defined
   if [[ -n $cluster_store || -n $external_secrets ]] && [[ -z $external_secrets_list ]]; then
     echo "A Store is defined, but no External Secrets are defined.. Exiting"
@@ -121,7 +120,7 @@ if [[ -n $external_secrets || -n $external_secrets_list || -n $secret_store || -
   if [[ -n $external_secrets && -z $secret_store && -z $cluster_store ]]; then
     echo "External Secrets are defined, but no Secret Store is defined.. Exiting."
     exit 42
-  fi 
+  fi
 
   export patchFunc=${BUILDKITE_PLUGIN_K8S_PATCH:-"function(f) f"}
 
@@ -148,18 +147,18 @@ if [[ -n $external_secrets || -n $external_secrets_list || -n $secret_store || -
   echo "Waiting for Secret to become available"
   while [ $SECONDS -lt $secret_apply_end_time ]; do
     # Check if the secret exists
-    secret_exists=$(kubectl get secret $job_name > /dev/null 2>&1; echo $?)
-    external_secret_status=`kubectl get ExternalSecret $job_name -o json | jq -r '.status.conditions[0].status'`
-    if [ $secret_exists != 1 ] && [ $external_secret_status == "True" ]; then
+    secret_exists=$(kubectl get secret "$job_name" > /dev/null 2>&1; echo $?)
+    external_secret_status=$(kubectl get ExternalSecret "$job_name" -o json | jq -r '.status.conditions[0].status')
+    if [ "$secret_exists" != 1 ] && [ "$external_secret_status" == "True" ]; then
       echo "Secret Created"
       break
     fi
   done
-  
-  if [ $secret_exists == 1 ] || [ $external_secret_status != "True" ]; then
+
+  if [ "$secret_exists" == 1 ] || [ "$external_secret_status" != "True" ]; then
     echo "Secret creation failed, check ExternalSecrets logs in your cluster"
-    status=$(kubectl get ExternalSecret $job_name -o json | jq -r '.status.conditions[0].message')
-    echo "External Secret Status: $status" 
+    status=$(kubectl get ExternalSecret "$job_name" -o json | jq -r '.status.conditions[0].message')
+    echo "External Secret Status: $status"
     return 42
   fi
 fi
@@ -214,8 +213,6 @@ fi
 
 echo "Timeout: ${timeout}s"
 
-echo "--- :kubernetes: Running image: ${BUILDKITE_PLUGIN_K8S_IMAGE}"
-
 counter="$timeout"
 while true
 do
@@ -252,11 +249,11 @@ echo "Pod is running: $pod_name"
 
 # not set or not empty - "" disables
 if [[ ! -v "BUILDKITE_PLUGIN_K8S_INIT_IMAGE" || -n "${BUILDKITE_PLUGIN_K8S_INIT_IMAGE}" ]]; then
-    echo "--- :kubernetes: bootstrap container"
+    echo "--- :kubernetes: Running init-container image: ${BUILDKITE_PLUGIN_K8S_INIT_IMAGE:-}"
     tail_logs "$pod_name" "bootstrap" "$bootstrap_container_log_complete_marker_file"
 fi
 
-echo "+++ :kubernetes: step container"
+echo "+++ :kubernetes: Running image: ${BUILDKITE_PLUGIN_K8S_IMAGE:-}"
 tail_logs "$pod_name" "step" "$step_container_log_complete_marker_file" &
 
 counter="$timeout"
@@ -277,7 +274,7 @@ while [[ -z "$jobstatus" ]] ; do
   fi
 done
 
-echo "--- :kubernetes: Job status: $jobstatus"
+echo "job status: $jobstatus"
 
 # Wait for logs to be fully printed, printing runs in a separate process and we're racing with it.
 readonly log_complete_start_time="$SECONDS"
@@ -287,8 +284,8 @@ do
 done
 
 status=""
-if [[ "$jobstatus" == "Complete" ]] ; then
-  echo "success"
+if [[ "$jobstatus" == "Complete" || "$jobstatus" == "SuccessCriteriaMet" ]] ; then
+  echo "success (${jobstatus})"
   status="0"
 else
   while true
@@ -298,8 +295,8 @@ else
     get_pod_status=$?
     if [[ "$get_pod_status" -eq 0 ]]; then
       init_container_status="$(echo "$pod_json" | jq ".status.initContainerStatuses[0].state.terminated.exitCode")"
-      if [[ -n "$init_container_status" && "$init_container_status" != "0" ]]; then
-        echo "Warning: init container failed with exit code $init_container_status, this usually indicates plugin misconfiguration or infrastructure failure"
+      if [[ -n "$init_container_status" && "$init_container_status" != "null" && "$init_container_status" != "0" ]]; then
+        echo "Warning: init container failed with exit code $init_container_status"
         status="$init_container_status"
       else
         if container_status="$(echo "$pod_json" | jq -e ".status.containerStatuses[0].state.terminated.exitCode")"; then
