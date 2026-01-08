@@ -38,6 +38,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_PLUGIN_K8S_RUN_AS_USER: '',
     BUILDKITE_PLUGIN_K8S_RUN_AS_GROUP: '',
     BUILDKITE_PLUGIN_K8S_MOUNT_SECRET: '',
+    BUILDKITE_PLUGIN_K8S_MOUNT_SECRET_PERMISSIONS: '256', // octal `0400` - read-only for owner
     BUILDKITE_PLUGIN_K8S_MOUNT_BUILDKITE_AGENT: 'true',
     BUILDKITE_PLUGIN_K8S_PRIVILEGED: 'false',
     BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_CPU: '',
@@ -229,18 +230,25 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
 
   local secretMount = {
     local cfg = [
-      std.splitLimit(env[f], ':', 1)
+      local parts = std.splitLimit(env[f], ':', 1);
+      // Filter the array to only include parts that have two elements
+      if std.length(parts) == 2 then
+        parts
+      else
+        null
       for f in std.objectFields(env)
       if std.startsWith(f, 'BUILDKITE_PLUGIN_K8S_MOUNT_SECRET')
-         && env[f] != ''
+        && env[f] != ''
     ],
+    local filteredCfg = [ c for c in cfg if c != null ],
+
     mount: [
       { name: c[0], mountPath: c[1] }
-      for c in cfg 
+      for c in filteredCfg
     ],
     volume: [
-      { name: c[0], secret: { secretName: c[0], defaultMode: 256 } }
-      for c in cfg 
+      { name: c[0], secret: { secretName: c[0], defaultMode: std.parseInt(env.BUILDKITE_PLUGIN_K8S_MOUNT_SECRET_PERMISSIONS) } }
+      for c in filteredCfg
     ]
   },
 
@@ -330,7 +338,11 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
         labels: labels,
         # Take all the same annotations as the job itself on the pod, but also add the istio inject false annotation
         # Istio gets in the way of many jobs
-        annotations: annotations { 'sidecar.istio.io/inject': 'false' },
+        # Mark Pod as NOT safe to evict for ClusterAutoscaler during cluster scale up/down.
+        annotations: annotations {
+          'sidecar.istio.io/inject': 'false',
+          'cluster-autoscaler.kubernetes.io/safe-to-evict': 'false'
+        },
       },
       spec: {
         nodeSelector: {
