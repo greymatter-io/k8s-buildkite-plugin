@@ -28,9 +28,12 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_PLUGIN_K8S_GIT_SSH_SECRET_KEY: '',
     BUILDKITE_PLUGIN_K8S_GIT_SSH_SECRET_NAME: '',
     BUILDKITE_PLUGIN_K8S_AGENT_TOKEN_SECRET_KEY: 'buildkite-agent-token',
-    BUILDKITE_PLUGIN_K8S_INIT_IMAGE: 'embarkstudios/k8s-buildkite-agent@sha256:1d88791315ed6b0b49a64055bc71c5a9a0b1953e387f99d25299ed06ccea5dbd',
+    // Multi-arch. The upstream default (embarkstudios/k8s-buildkite-agent, amd64 only) fails with
+    // "exec format error" whenever a job lands on the ARM builder pool.
+    BUILDKITE_PLUGIN_K8S_INIT_IMAGE: 'pipeline-oci.download.greymatter.io/buildkite-agent:latest',
     BUILDKITE_PLUGIN_K8S_ALWAYS_PULL: false,
-    BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET: '',
+    // Needed to pull the default init image above from the private registry.
+    BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET: 'nexus-agent-pull-secret',
     BUILDKITE_PLUGIN_K8S_MOUNT_PATH_EXTERNAL_SECRETS: "/externalsecrets",
     BUILDKITE_PLUGIN_K8S_BUILD_PATH_HOST_PATH: '',
     BUILDKITE_PLUGIN_K8S_BUILD_PATH_PVC: '',

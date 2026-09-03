@@ -95,7 +95,7 @@ Default: `false`
 
 ### ``image-pull-secret`` (optional, string)
 
-The name of the secret that holds the credentials for a remote container registry.
+The name of the secret that holds the credentials for a remote container registry. Default: `nexus-agent-pull-secret`, which the default `init-image` needs.
 
 
 ### `command` (optional, array)
@@ -136,7 +136,7 @@ Example: `my-secrets`
 
 ### `init-image` (optional, string)
 
-Override the [job initContainer](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/). A buildkite-agent binary is expected to exist to do the checkout, along with git and ssh. The default is to use a public image based on the Dockerfile in this repository. If set to an empty string no init container is used.
+Override the [job initContainer](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/). A buildkite-agent binary is expected to exist to do the checkout, along with git and ssh. The default is `pipeline-oci.download.greymatter.io/buildkite-agent:latest`, a multi-arch image (the upstream default `embarkstudios/k8s-buildkite-agent` is amd64-only and fails on the ARM builder pool). If set to an empty string no init container is used.
 
 Example: `embarkstudios/k8s:1.0.0`
 
