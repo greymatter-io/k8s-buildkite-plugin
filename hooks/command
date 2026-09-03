@@ -98,6 +98,7 @@ function tail_logs {
 # External Secrets Handler
 if [[ -n $external_secrets || -n $external_secrets_list || -n $secret_store || -n $cluster_store ]]; then
   echo "--- :kubernetes: Creating Secrets"
+
   # Check if the ExternalSecrets CRD exists
   if [[ -z $(kubectl get crd externalsecrets.external-secrets.io 2>/dev/null) ]]; then
     echo "External Secrets CRD not found. Is the External Secrets Operator installed in the cluster?" >&2
@@ -141,7 +142,6 @@ if [[ -n $external_secrets || -n $external_secrets_list || -n $secret_store || -
 
   set +e
   echo "$external_secret_spec" | kubectl apply -f -
-  external_secret_apply_exit_code="$?"
   set -e
 
   echo "Waiting for Secret to become available"
