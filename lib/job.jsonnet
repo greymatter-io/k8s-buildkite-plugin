@@ -41,9 +41,37 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_PLUGIN_K8S_MOUNT_SECRET_PERMISSIONS: '256', // octal `0400` - read-only for owner
     BUILDKITE_PLUGIN_K8S_MOUNT_BUILDKITE_AGENT: 'true',
     BUILDKITE_PLUGIN_K8S_PRIVILEGED: 'false',
-    BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_CPU: '',
+    // Defaults are requests, not limits. Upstream leaves both empty, which is the
+    // bug these values fix: a pod with no request scores identically on every node
+    // under NodeResourcesFit, so the scheduler's tie-break falls through to
+    // ImageLocality and jobs pile onto whichever nodes already have the images
+    // cached. A freshly scaled-up builder stays nearly empty while warm nodes
+    // thrash. Any non-zero request restores meaningful resource scoring.
+    //
+    // Sized against a 16-core x86 builder (aks-builders-*, 15740m / 29.04Gi
+    // allocatable) minus 270m / 226Mi of DaemonSets, so ~15470m / ~28.8Gi is
+    // really available to jobs. 16 * 900m = 14.4 cores and 16 * 1536Mi = 24Gi both
+    // fit, so ~16 concurrent jobs land per builder. (1536Mi rather than 1.5Gi so
+    // the quantity is an exact integer and reads the same as kubectl prints it.)
+    //
+    // Measured from 20 concurrent step containers (`kubectl top pods -n buildkite
+    // -l buildkite/plugin=k8s --containers`, 2026-09-03): CPU median 1527m, mean
+    // 2136m; memory median 1135Mi, mean 1127Mi, max 2310Mi. The memory request
+    // deliberately sits just above the observed median rather than the max, and
+    // the CPU request well below the mean: these are scheduling floors, and with
+    // no limit set a step still bursts into whatever the node has spare. Sizing
+    // either to the max would halve builder density to buy headroom that CPU
+    // shares already provide.
+    //
+    // The same nodeSelector also matches the 8-core ARM pool (aks-buildersarm-*,
+    // 7820m / 13.3Gi), where these values yield ~8 concurrent jobs. That is
+    // proportional to the smaller node, so one pair of defaults covers both.
+    //
+    // Override per step with resources-request-cpu / resources-request-memory, or
+    // pass '' to opt a step out of having a request at all.
+    BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_CPU: '900m',
     BUILDKITE_PLUGIN_K8S_RESOURCES_LIMIT_CPU: '',
-    BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_MEMORY: '',
+    BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_MEMORY: '1536Mi',
     BUILDKITE_PLUGIN_K8S_RESOURCES_LIMIT_MEMORY: '',
     BUILDKITE_PLUGIN_K8S_SERVICE_ACCOUNT_NAME: 'default',
     BUILDKITE_PLUGIN_K8S_WORKDIR: std.join('/', [env.BUILDKITE_BUILD_PATH, buildSubPath]),
@@ -287,14 +315,49 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       args: [env[f] for f in std.sort(std.objectFields(env), numberSuffix) if std.startsWith(f, 'BUILDKITE_PLUGIN_K8S_COMMAND_')],
     },
 
+  // The bootstrap init container fetches into the on-node git mirror and runs
+  // ssh-keyscan: I/O bound, short lived, and nowhere near as hungry as a build.
+  //
+  // Deliberately not plugin options. A pod's effective scheduling request is
+  // max(max(init requests), sum(container requests)) because init containers run
+  // to completion before the step starts, so while these stay below the step
+  // request they cost nothing in per-node capacity and there is nothing to tune.
+  // Raising either above the step request would start reducing builder density.
+  //
+  // These are requests with no limits, so a large mirror fetch still bursts past
+  // 256Mi rather than being OOM-killed. Do not add limits here without checking
+  // the biggest repo the mirror serves.
+  local initResources = {
+    requests: {
+      cpu: '100m',
+      memory: '256Mi',
+    },
+  },
+
   local initContainers =
     if env.BUILDKITE_PLUGIN_K8S_INIT_IMAGE == '' then []
     else [{
       name: 'bootstrap',
       image: env.BUILDKITE_PLUGIN_K8S_INIT_IMAGE,
-      args: ['bootstrap', '--experiment=git-mirrors', '--git-mirrors-path=/git-mirrors', '--ssh-keyscan', '--command', 'true'],
+      // No --experiment=git-mirrors here. git-mirrors was promoted out of
+      // experiment status in agent v3.47.0 (buildkite/agent#2032), so the name now
+      // lands in the agent's `Promoted` map: passing it is not an error, but
+      // EnableWithWarnings logs "The git-mirrors experiment has been promoted to a
+      // stable feature ... you can safely remove the --experiment git-mirrors flag"
+      // on every single job. Mirroring is unaffected by the removal because the
+      // only gate on it is a non-empty --git-mirrors-path (internal/job/checkout.go
+      // checks `GitMirrorsPath != "" && Repository != ""`, with no experiment
+      // check), and that flag is still passed below.
+      //
+      // Note for the next upstream merge: upstream still passes the flag on main as
+      // of v1.3.6, so this is a deliberate fork delta and the merge will keep
+      // wanting to re-add it. It is safe to keep dropping it. The narrower reason
+      // is the per-job warning, not removal -- the --experiment flag itself still
+      // exists in agent v4, only the git-mirrors value stopped being an experiment.
+      args: ['bootstrap', '--git-mirrors-path=/git-mirrors', '--ssh-keyscan', '--command', 'true'],
       env: podEnv,
       envFrom: initSecretEnv,
+      resources: initResources,
       volumeMounts: [
         { mountPath: env.BUILDKITE_BUILD_PATH, name: 'build' },
         { mountPath: '/git-mirrors', name: 'git-mirrors' },

@@ -270,21 +270,53 @@ Set the uid of the user in the job container. Sets the `runAsUser` SecurityConte
 ### `run-as-group` (optional, integer)
 Set the gid of the user in the job container. Sets the `runAsGroup` Security Context.
 
-### `resources-request-cpu` (optional, string)
+### `resources-request-cpu` (optional, string, default `900m`)
 
-Sets [cpu request](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/) for the build container.
+Sets [cpu request](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/) for the build container. Pass an empty string to request no CPU at all.
 
 ### `resources-limit-cpu` (optional, string)
 
-Sets [cpu limit](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/) for the build container.
+Sets [cpu limit](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/) for the build container. No default; with no limit a step bursts into whatever the node has spare.
 
-### `resources-request-memory` (optional, string)
+### `resources-request-memory` (optional, string, default `1536Mi`)
 
-Sets [memory request](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/) for the build container.
+Sets [memory request](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/) for the build container. Pass an empty string to request no memory at all.
 
 ### `resources-limit-memory` (optional, string)
 
-Sets [memory limit](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/) for the build container.
+Sets [memory limit](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/) for the build container. No default.
+
+#### Why the requests are defaulted
+
+This is a greymatter fork change; upstream leaves both requests empty.
+
+A container with no CPU or memory request scores identically on every node under
+the scheduler's `NodeResourcesFit` plugin, so placement falls through to the next
+tie-break, `ImageLocality`, which prefers nodes that already have the image
+cached. Jobs then pile onto warm nodes while a freshly scaled-up builder sits
+almost empty. Any non-zero request restores meaningful resource scoring.
+
+The defaults are sized against a 16-core x86 builder (15740m CPU and 29.04Gi
+memory allocatable), less roughly 270m and 226Mi of DaemonSets, leaving about
+15470m and 28.8Gi for jobs. At `900m` and `1536Mi` that is 14.4 cores and 24Gi
+for 16 concurrent jobs, so about 16 land per builder with headroom to spare. The
+same node selector also matches the 8-core ARM pool, where the same values give
+about 8 concurrent jobs, so one pair of defaults covers both.
+
+The numbers come from a sample of 20 concurrent step containers: CPU median
+1527m and mean 2136m, memory median 1135Mi, mean 1127Mi and max 2310Mi. The
+memory request sits just above the observed median rather than the max, and the
+CPU request below the mean, on purpose. These are scheduling floors, not caps,
+and no limits are set, so a heavy step still bursts. Sizing to the observed
+maximum would halve builder density to buy headroom that CPU shares already
+provide. A step that genuinely needs a guaranteed floor should set
+`resources-request-cpu` / `resources-request-memory` explicitly.
+
+The `bootstrap` init container gets a smaller fixed request (`100m` CPU, `256Mi`
+memory). It is deliberately not configurable: a pod's effective scheduling
+request is `max(max(init requests), sum(container requests))`, so while the init
+request stays below the step request it has no effect on how many jobs fit per
+node and there is nothing useful to tune.
 
 ### `service-account-name` (optional, string)
 

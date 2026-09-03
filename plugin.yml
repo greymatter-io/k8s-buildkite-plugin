@@ -70,12 +70,20 @@ configuration:
       type: string
     patch:
       type: string
+    # greymatter fork change: upstream ships no default request, which leaves the
+    # scheduler unable to tell builders apart and packs jobs onto image-warm nodes.
+    # These `default` keys are documentation only -- Buildkite does not apply JSON
+    # Schema defaults, so the value that actually takes effect is the one in
+    # lib/job.jsonnet. Change both together or they will drift.
+    # Sizing rationale is in README.md, "Why the requests are defaulted".
     resources-request-cpu:
       type: string
+      default: "900m"
     resources-limit-cpu:
       type: string
     resources-request-memory:
       type: string
+      default: "1536Mi"
     resources-limit-memory:
       type: string
     service-account-name:
