@@ -28,6 +28,9 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_PLUGIN_K8S_GIT_SSH_SECRET_KEY: '',
     BUILDKITE_PLUGIN_K8S_GIT_SSH_SECRET_NAME: '',
     BUILDKITE_PLUGIN_K8S_AGENT_TOKEN_SECRET_KEY: 'buildkite-agent-token',
+    // The agent's `queue` tag, exported by the agent as BUILDKITE_AGENT_META_DATA_QUEUE.
+    // Empty when the agent has no queue tag. See queuePlacement below.
+    BUILDKITE_AGENT_META_DATA_QUEUE: '',
     // Multi-arch. The upstream default (embarkstudios/k8s-buildkite-agent, amd64 only) fails with
     // "exec format error" whenever a job lands on the ARM builder pool.
     BUILDKITE_PLUGIN_K8S_INIT_IMAGE: 'registry.gitlab.com/greymatter-io/pipeline-oci/buildkite-agent:latest',
@@ -370,6 +373,35 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       ] + gitCredentials.mount + gitSSH.mount + defaultSecretsMounts.mount,
     }],
 
+  // Where the job pod is allowed to run. Each node pool in the build cluster carries
+  // the label and the NoSchedule taint `greymatter.io/build-system=<pool>`, so a pod
+  // needs both the nodeSelector and the toleration for its pool.
+  local poolPlacement(pool) = {
+    nodeSelector: { 'greymatter.io/build-system': pool },
+    tolerations: [{
+      key: 'greymatter.io/build-system',
+      operator: 'Equal',
+      value: pool,
+      effect: 'NoSchedule',
+    }],
+  },
+
+  // The queue the agent serves decides the pool, and for the two build queues also
+  // the CPU architecture, so a step's `agents: { queue: ... }` is the single place
+  // that chooses where its job runs. The agent pod's own nodeSelector, tolerations
+  // and affinity are not consulted: an agent for the arm64 queue can run on an
+  // amd64 node and its jobs still land on arm64 builders. A queue that is not
+  // listed here gets the builder pool with no architecture pin.
+  local queuePlacement = {
+    'k8s-amd64': poolPlacement('builders') { nodeSelector+: { 'kubernetes.io/arch': 'amd64' } },
+    'k8s-arm64': poolPlacement('builders') { nodeSelector+: { 'kubernetes.io/arch': 'arm64' } },
+    'k8s-agent': poolPlacement('agent_pool'),
+  },
+  local placement =
+    if std.objectHas(queuePlacement, env.BUILDKITE_AGENT_META_DATA_QUEUE)
+    then queuePlacement[env.BUILDKITE_AGENT_META_DATA_QUEUE]
+    else poolPlacement('builders'),
+
   local deadline = std.parseInt(env.BUILDKITE_TIMEOUT) * 60,
 
   // The configured secret plus both registry secrets, de-duplicated. Kubernetes tries every
@@ -416,17 +448,8 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
         },
       },
       spec: {
-        nodeSelector: {
-          "greymatter.io/build-system": "builders",
-        },
-        tolerations: [
-          {
-            key: "greymatter.io/build-system",
-            operator: "Equal",
-            value: "builders",
-            effect: "NoSchedule"
-          }
-        ],
+        nodeSelector: placement.nodeSelector,
+        tolerations: placement.tolerations,
         activeDeadlineSeconds: deadline,
         restartPolicy: 'Never',
         serviceAccountName: env.BUILDKITE_PLUGIN_K8S_SERVICE_ACCOUNT_NAME,
