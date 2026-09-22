@@ -326,7 +326,27 @@ Default: `default`
 
 ### `use-agent-node-affinity` (optional, boolean)
 
-If set to `true`, the spawned jobs will use the same [node affinity](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/), [tolerations](https://kubernetes.io/docs/concepts/scheduling-eviction/taint-and-toleration/), and [nodeSelector](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector) as the buildkite agent.
+Accepted and ignored. The job's node placement comes from the agent's queue tag (see
+[Node placement](#node-placement)), not from the agent pod's own scheduling fields. Setting
+this option prints a notice in the step log and changes nothing.
+
+### Node placement
+
+Every node pool in the build cluster carries the label and the `NoSchedule` taint
+`greymatter.io/build-system=<pool>`. The job pod gets the `nodeSelector` and toleration for
+its pool from the queue the agent serves, which the agent exports to hooks as
+`BUILDKITE_AGENT_META_DATA_QUEUE`:
+
+| Agent queue | Pool | `kubernetes.io/arch` |
+|---|---|---|
+| `k8s-amd64` | `builders` | `amd64` |
+| `k8s-arm64` | `builders` | `arm64` |
+| `k8s-agent` | `agent_pool` | unpinned |
+| anything else | `builders` | unpinned |
+
+So a step's `agents: { queue: k8s-arm64 }` is what makes its job run on an arm64 builder; where
+the agent pod itself runs does not matter. Use [`patch`](#patch-optional-string) to change the
+placement of an individual step.
 
 ### `workdir` (optional, string)
 

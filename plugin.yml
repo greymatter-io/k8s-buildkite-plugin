@@ -88,6 +88,8 @@ configuration:
       type: string
     service-account-name:
       type: string
+    # Accepted so existing pipelines keep validating; has no effect. Job placement
+    # follows the agent's queue tag, see README.md, "Node placement".
     use-agent-node-affinity:
       type: boolean
     print-resulting-job-spec:

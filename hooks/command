@@ -177,11 +177,7 @@ job_spec="$(jsonnet \
   "${basedir}/lib/job.jsonnet")"
 
 if [[ "$use_agent_node_affinity" == "true" ]]; then
-  agent_spec="$(kubectl get pod "$(cat /etc/hostname)" -o json)"
-  for field in affinity tolerations nodeSelector; do
-    agent_value=$(echo "$agent_spec" | jq ".spec.$field")
-    job_spec="$(echo "$job_spec" | jq ".spec.template.spec.$field=$agent_value")"
-  done
+  echo "use-agent-node-affinity has no effect: the job is placed by the agent's queue tag (README, 'Node placement')"
 fi
 
 if [[ "$print_resulting_job_spec" == "true" ]]; then
