@@ -78,7 +78,7 @@ configuration:
     # Sizing rationale is in README.md, "Why the requests are defaulted".
     resources-request-cpu:
       type: string
-      default: "900m"
+      default: "1750m"
     resources-limit-cpu:
       type: string
     resources-request-memory:

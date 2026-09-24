@@ -56,28 +56,28 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     // cached. A freshly scaled-up builder stays nearly empty while warm nodes
     // thrash. Any non-zero request restores meaningful resource scoring.
     //
-    // Sized against a 16-core x86 builder (aks-builders-*, 15740m / 29.04Gi
-    // allocatable) minus 270m / 226Mi of DaemonSets, so ~15470m / ~28.8Gi is
-    // really available to jobs. 16 * 900m = 14.4 cores and 16 * 1536Mi = 24Gi both
-    // fit, so ~16 concurrent jobs land per builder. (1536Mi rather than 1.5Gi so
-    // the quantity is an exact integer and reads the same as kubectl prints it.)
+    // Sized against the 8-core builders (aks-builders-* Standard_D8ads_v5 and
+    // aks-buildersarm-* Standard_D8pls_v5, both 7820m CPU allocatable) minus
+    // roughly 380m of DaemonSets, so about 7440m is really available to jobs.
+    // 4 * 1750m = 7000m fits and 5 * 1750m does not, so four concurrent jobs
+    // land per builder and each has two cores to itself when the node is full.
+    // A Go build, test or lint step uses every core it can get, so the CPU
+    // request is what decides how many such steps share a node: at 900m the
+    // scheduler packed eight onto eight cores and each ran on about one core.
+    // Memory stays at 1536Mi (an exact integer that reads the same as kubectl
+    // prints it): 4 * 1536Mi is 6Gi of the 29Gi allocatable, so memory never
+    // decides placement on these nodes.
     //
     // Measured from 20 concurrent step containers (`kubectl top pods -n buildkite
     // -l buildkite/plugin=k8s --containers`, 2026-09-03): CPU median 1527m, mean
-    // 2136m; memory median 1135Mi, mean 1127Mi, max 2310Mi. The memory request
-    // deliberately sits just above the observed median rather than the max, and
-    // the CPU request well below the mean: these are scheduling floors, and with
-    // no limit set a step still bursts into whatever the node has spare. Sizing
-    // either to the max would halve builder density to buy headroom that CPU
-    // shares already provide.
-    //
-    // The same nodeSelector also matches the 8-core ARM pool (aks-buildersarm-*,
-    // 7820m / 13.3Gi), where these values yield ~8 concurrent jobs. That is
-    // proportional to the smaller node, so one pair of defaults covers both.
+    // 2136m; memory median 1135Mi, mean 1127Mi, max 2310Mi. Measured again on
+    // 2026-09-24 with six greymatter-cli steps on one D8: the node at 102% CPU and
+    // each step at about 1170m. These are scheduling floors; with no limit set a
+    // step still bursts into whatever the node has spare.
     //
     // Override per step with resources-request-cpu / resources-request-memory, or
     // pass '' to opt a step out of having a request at all.
-    BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_CPU: '900m',
+    BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_CPU: '1750m',
     BUILDKITE_PLUGIN_K8S_RESOURCES_LIMIT_CPU: '',
     BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_MEMORY: '1536Mi',
     BUILDKITE_PLUGIN_K8S_RESOURCES_LIMIT_MEMORY: '',
