@@ -256,19 +256,6 @@ Example: `/var/lib/buildkite/builds`
 
 Optionally mount an existing [Persistent Volume Claim](https://kubernetes.io/docs/concepts/storage/persistent-volumes/) used as backing storage for the build.
 
-#### Where the checkout lands inside the pod
-
-This is a greymatter fork change; upstream always includes the agent name in the path.
-
-The step runs in `<build path>/<org>/<pipeline>`, so `/build/greymatter/greymatter-cli` for
-that pipeline, and `BUILDKITE_BUILD_CHECKOUT_PATH` inside the pod names that directory. Go
-hashes a package's absolute directory into its build cache key unless `-trimpath` is set, so
-a path that varied per agent gave every agent its own copy of a repository's compiled
-packages in the shared build cache that no other agent could use. With the default
-per-pod `emptyDir` the path needs no per-job segment. When `build-path-host-path` or
-`build-path-pvc` puts every job on one shared volume, the path becomes
-`<build path>/<agent name>/<org>/<pipeline>` so concurrent checkouts stay apart.
-
 ### `git-mirrors-host-path` (optional, string)
 
 Optionally mount a [host path](https://kubernetes.io/docs/concepts/storage/volumes/#hostpath) to be used as [git-mirrors](https://forum.buildkite.community/t/shared-git-repository-checkouts-in-the-agent/443) path. This enables multiple pipelines to share a single git repository.
