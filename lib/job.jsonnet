@@ -13,8 +13,17 @@ local labelValue(s) =
   if std.length(sanitizedValue) < 63 then sanitizedValue else std.substr(sanitizedValue, 0, 63);
 
 function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
-  local buildSubPath = std.join('/', [
-    env.BUILDKITE_AGENT_NAME,
+  // The checkout lives at <build path>/<org>/<pipeline> inside the job pod. Go hashes a
+  // package's absolute directory into its build cache key (cmd/go buildActionID writes
+  // "dir <p.Dir>" for every package outside GOROOT unless -trimpath is set), so a path
+  // that varied per agent gave every agent its own copy of a repository's compiled
+  // packages and test binaries in the shared build cache, and no other agent could hit
+  // them. The build volume is a per-pod emptyDir by default, so the path needs no
+  // per-job segment; when build-path-pvc or build-path-host-path puts every job on one
+  // shared volume, the agent name keeps concurrent checkouts apart as before.
+  local sharedBuildVolume =
+    env.BUILDKITE_PLUGIN_K8S_BUILD_PATH_PVC != '' || env.BUILDKITE_PLUGIN_K8S_BUILD_PATH_HOST_PATH != '',
+  local buildSubPath = std.join('/', (if sharedBuildVolume then [env.BUILDKITE_AGENT_NAME] else []) + [
     env.BUILDKITE_ORGANIZATION_SLUG,
     env.BUILDKITE_PIPELINE_SLUG,
   ]),
@@ -101,7 +110,10 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
   local podEnv =
     stepEnv +
     [
-      { name: f, value: env[f] }
+      // The agent's checkout path carries the agent's own name; inside the pod the
+      // checkout is at the plugin's working directory, and the bootstrap init
+      // container and the step both read this variable to find it.
+      { name: f, value: if f == 'BUILDKITE_BUILD_CHECKOUT_PATH' then env.BUILDKITE_PLUGIN_K8S_WORKDIR else env[f] }
       for f in std.objectFields(agentEnv)
       if std.startsWith(f, 'BUILDKITE')
     ] +
