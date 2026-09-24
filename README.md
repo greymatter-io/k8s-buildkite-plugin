@@ -270,7 +270,7 @@ Set the uid of the user in the job container. Sets the `runAsUser` SecurityConte
 ### `run-as-group` (optional, integer)
 Set the gid of the user in the job container. Sets the `runAsGroup` Security Context.
 
-### `resources-request-cpu` (optional, string, default `900m`)
+### `resources-request-cpu` (optional, string, default `1750m`)
 
 Sets [cpu request](https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/) for the build container. Pass an empty string to request no CPU at all.
 
@@ -296,12 +296,13 @@ tie-break, `ImageLocality`, which prefers nodes that already have the image
 cached. Jobs then pile onto warm nodes while a freshly scaled-up builder sits
 almost empty. Any non-zero request restores meaningful resource scoring.
 
-The defaults are sized against a 16-core x86 builder (15740m CPU and 29.04Gi
-memory allocatable), less roughly 270m and 226Mi of DaemonSets, leaving about
-15470m and 28.8Gi for jobs. At `900m` and `1536Mi` that is 14.4 cores and 24Gi
-for 16 concurrent jobs, so about 16 land per builder with headroom to spare. The
-same node selector also matches the 8-core ARM pool, where the same values give
-about 8 concurrent jobs, so one pair of defaults covers both.
+The defaults are sized against the 8-core builders (`Standard_D8ads_v5` x86 and
+`Standard_D8pls_v5` ARM, both 7820m CPU allocatable), less roughly 380m of
+DaemonSets, leaving about 7440m for jobs. At `1750m` four jobs fit on a node and a
+fifth does not, so a Go build, test or lint step that uses every core it can get
+has two cores to itself when the node is full. Memory stays at `1536Mi`; four of
+those is 6Gi of the 29Gi allocatable, so memory does not decide placement. The
+same values apply on both pools, so one pair of defaults covers both.
 
 The numbers come from a sample of 20 concurrent step containers: CPU median
 1527m and mean 2136m, memory median 1135Mi, mean 1127Mi and max 2310Mi. The
