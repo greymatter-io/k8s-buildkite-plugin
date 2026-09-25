@@ -386,21 +386,21 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     }],
   },
 
-  // The queue the agent serves decides the pool, and for the two build queues also
-  // the CPU architecture, so a step's `agents: { queue: ... }` is the single place
-  // that chooses where its job runs. The agent pod's own nodeSelector, tolerations
-  // and affinity are not consulted: an agent for the arm64 queue can run on an
-  // amd64 node and its jobs still land on arm64 builders. A queue that is not
-  // listed here gets the builder pool with no architecture pin.
+  // The queue the agent serves decides the pool and the CPU architecture, so a step's
+  // `agents: { queue: ... }` is the single place that chooses where its job runs. The
+  // agent pod's own nodeSelector, tolerations and affinity are not consulted: an agent
+  // for the arm64 queue can run on an amd64 node and its jobs still land on arm64
+  // builders. Every job runs on the builder pool: the `agent_pool` nodes are sized for
+  // the agent pods and the pipeline-upload steps they run in place, not for job pods,
+  // so the `k8s-agent` queue and any queue not listed here get an amd64 builder.
   local queuePlacement = {
     'k8s-amd64': poolPlacement('builders') { nodeSelector+: { 'kubernetes.io/arch': 'amd64' } },
     'k8s-arm64': poolPlacement('builders') { nodeSelector+: { 'kubernetes.io/arch': 'arm64' } },
-    'k8s-agent': poolPlacement('agent_pool'),
   },
   local placement =
     if std.objectHas(queuePlacement, env.BUILDKITE_AGENT_META_DATA_QUEUE)
     then queuePlacement[env.BUILDKITE_AGENT_META_DATA_QUEUE]
-    else poolPlacement('builders'),
+    else queuePlacement['k8s-amd64'],
 
   local deadline = std.parseInt(env.BUILDKITE_TIMEOUT) * 60,
 
