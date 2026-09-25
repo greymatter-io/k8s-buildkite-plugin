@@ -342,11 +342,12 @@ its pool from the queue the agent serves, which the agent exports to hooks as
 |---|---|---|
 | `k8s-amd64` | `builders` | `amd64` |
 | `k8s-arm64` | `builders` | `arm64` |
-| `k8s-agent` | `agent_pool` | unpinned |
-| anything else | `builders` | unpinned |
+| anything else, including `k8s-agent` | `builders` | `amd64` |
 
 So a step's `agents: { queue: k8s-arm64 }` is what makes its job run on an arm64 builder; where
-the agent pod itself runs does not matter. Use [`patch`](#patch-optional-string) to change the
+the agent pod itself runs does not matter. No job runs on the `agent_pool` nodes: they are sized
+for the agent pods and the pipeline-upload steps those run in place, so a step on the `k8s-agent`
+queue that uses this plugin still gets an amd64 builder. Use [`patch`](#patch-optional-string) to change the
 placement of an individual step.
 
 ### `workdir` (optional, string)
