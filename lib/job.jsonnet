@@ -36,8 +36,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_PLUGIN_K8S_INIT_IMAGE: 'pipeline-oci.download.greymatter.io/buildkite-agent:latest',
     BUILDKITE_PLUGIN_K8S_ALWAYS_PULL: false,
     // Needed to pull the default init image above from the private registry. See
-    // imagePullSecrets below: the GitLab and Nexus secrets are always attached as well, so a
-    // job whose images live on either registry pulls.
+    // imagePullSecrets below: the Nexus secret is always attached as well.
     BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET: 'nexus-agent-pull-secret',
     BUILDKITE_PLUGIN_K8S_MOUNT_PATH_EXTERNAL_SECRETS: "/externalsecrets",
     BUILDKITE_PLUGIN_K8S_BUILD_PATH_HOST_PATH: '',
@@ -404,13 +403,12 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
 
   local deadline = std.parseInt(env.BUILDKITE_TIMEOUT) * 60,
 
-  // The configured secret plus both registry secrets, de-duplicated. Kubernetes tries every
-  // listed secret against the registry, so a pipeline that names only one of them still pulls
-  // its init image and step image whether they live on GitLab or Nexus. Setting
-  // image-pull-secret to '' keeps the old "no secret" behaviour for public images.
+  // The configured secret plus the Nexus secret, de-duplicated. Kubernetes tries every listed
+  // secret against the registry, so a pipeline that names a different secret still pulls the
+  // Nexus init image. Setting image-pull-secret to '' attaches no secret, for public images.
   local pullSecretNames =
     if env.BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET == '' then []
-    else std.set([env.BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET, 'gitlab-agent-pull-secret', 'nexus-agent-pull-secret']),
+    else std.set([env.BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET, 'nexus-agent-pull-secret']),
   local imagePullSecrets = [{name: n} for n in pullSecretNames],
 
 
