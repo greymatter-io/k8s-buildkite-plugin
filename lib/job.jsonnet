@@ -33,12 +33,12 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_AGENT_META_DATA_QUEUE: '',
     // Multi-arch. The upstream default (embarkstudios/k8s-buildkite-agent, amd64 only) fails with
     // "exec format error" whenever a job lands on the ARM builder pool.
-    BUILDKITE_PLUGIN_K8S_INIT_IMAGE: 'registry.gitlab.com/greymatter-io/pipeline-oci/buildkite-agent:latest',
+    BUILDKITE_PLUGIN_K8S_INIT_IMAGE: 'pipeline-oci.download.greymatter.io/buildkite-agent:latest',
     BUILDKITE_PLUGIN_K8S_ALWAYS_PULL: false,
     // Needed to pull the default init image above from the private registry. See
     // imagePullSecrets below: the GitLab and Nexus secrets are always attached as well, so a
-    // job whose images live on either registry pulls during the Nexus -> GitLab migration.
-    BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET: 'gitlab-agent-pull-secret',
+    // job whose images live on either registry pulls.
+    BUILDKITE_PLUGIN_K8S_IMAGE_PULL_SECRET: 'nexus-agent-pull-secret',
     BUILDKITE_PLUGIN_K8S_MOUNT_PATH_EXTERNAL_SECRETS: "/externalsecrets",
     BUILDKITE_PLUGIN_K8S_BUILD_PATH_HOST_PATH: '',
     BUILDKITE_PLUGIN_K8S_BUILD_PATH_PVC: '',
