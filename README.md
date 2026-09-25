@@ -95,7 +95,7 @@ Default: `false`
 
 ### ``image-pull-secret`` (optional, string)
 
-The name of the secret that holds the credentials for a remote container registry. Default: `nexus-agent-pull-secret`, which the default `init-image` needs. Whatever you set, the job pod also carries `gitlab-agent-pull-secret` and `nexus-agent-pull-secret`, so images on either registry pull; set it to an empty string to attach no secret at all.
+The name of the secret that holds the credentials for a remote container registry. Default: `nexus-agent-pull-secret`, which the default `init-image` needs. Whatever you set, the job pod also carries `nexus-agent-pull-secret`; set it to an empty string to attach no secret at all.
 
 
 ### `command` (optional, array)
