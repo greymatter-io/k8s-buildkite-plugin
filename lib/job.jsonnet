@@ -346,6 +346,15 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     else [{
       name: 'bootstrap',
       image: env.BUILDKITE_PLUGIN_K8S_INIT_IMAGE,
+      // The init image comes from the node's image cache and is pulled only when
+      // the node does not hold it. `always-pull` sets the step container alone.
+      // Set explicitly because Kubernetes defaults an omitted policy on a
+      // `:latest` image to Always, which contacts the registry for every job pod.
+      // The buildkite-image-prepull DaemonSet in build-system pulls the agent
+      // image onto every builder node, and
+      // `kubectl rollout restart daemonset/buildkite-image-prepull` re-pulls it.
+      imagePullPolicy: 'IfNotPresent',
+
       // No --experiment=git-mirrors here. git-mirrors was promoted out of
       // experiment status in agent v3.47.0 (buildkite/agent#2032), so the name now
       // lands in the agent's `Promoted` map: passing it is not an error, but
