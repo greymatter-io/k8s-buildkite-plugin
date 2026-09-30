@@ -89,7 +89,7 @@ Example: `golang:1.12.5`
 
 ### `always-pull` (optional, boolean)
 
-Whether to always pull the latest image before running the command. Sets [imagePullPolicy](https://kubernetes.io/docs/concepts/containers/images/#updating-images) on the container. If `false`, the value `IfNotPresent` is used.
+Whether to always pull the latest image before running the command. Sets [imagePullPolicy](https://kubernetes.io/docs/concepts/containers/images/#updating-images) on the step container only. If `false`, the value `IfNotPresent` is used. The `bootstrap` init container always uses `IfNotPresent`, whatever this is set to; the `init-image` section describes how its image is refreshed.
 
 Default: `false`
 
@@ -137,6 +137,8 @@ Example: `my-secrets`
 ### `init-image` (optional, string)
 
 Override the [job initContainer](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/). A buildkite-agent binary is expected to exist to do the checkout, along with git and ssh. The default is `pipeline-oci.download.greymatter.io/buildkite-agent:latest`, a multi-arch image (the upstream default `embarkstudios/k8s-buildkite-agent` is amd64-only and fails on the ARM builder pool). If set to an empty string no init container is used.
+
+The init container always uses `imagePullPolicy: IfNotPresent`, so a job pod takes the init image from the node's image cache and pulls it only when the node does not hold it; `always-pull` does not apply to it. In the Greymatter build cluster the `buildkite-image-prepull` DaemonSet (build-system `infra/k8s/buildkite/image-prepull.yaml`) pulls the agent image onto every builder node. After a new agent image is published, run `kubectl rollout restart daemonset/buildkite-image-prepull -n buildkite` to re-pull it on every node.
 
 Example: `embarkstudios/k8s:1.0.0`
 
