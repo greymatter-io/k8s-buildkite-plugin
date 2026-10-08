@@ -23,6 +23,38 @@ This behavior may be disabled by setting `mount-buildkite-agent: false` in the p
 As the build-agent doesn't run in the same container as the actual commands, automatic upload of artifacts specified in `artifact_paths` won't work.
 A workaround to this is to run `buildkite-agent artifact upload ...` as a command in the step itself.
 
+### Repository checkout
+
+The repository is cloned once per step, by the `bootstrap` init container in the job pod. That
+container runs `buildkite-agent bootstrap --phases=checkout`, fetches through the git mirror at
+`/git-mirrors`, and checks out `BUILDKITE_COMMIT` into the build volume that the step container
+mounts. The step runs on that checkout.
+
+The agent that runs the plugin does not clone the repository. The plugin's `environment` hook
+exports `BUILDKITE_SKIP_CHECKOUT=true`, and the agent runs plugin `environment` hooks before its
+checkout phase, so the agent skips its checkout. The agent still creates the checkout directory
+and runs the plugin's `command` hook from it; the hooks read no files from that directory. Two
+cases keep the agent's checkout:
+
+- On macOS agents the `command` hook runs the step on the agent itself, so the `environment` hook
+  leaves `BUILDKITE_SKIP_CHECKOUT` unset there.
+- An agent started with `--checkout-override-mode=strict` or `--no-command-eval` ignores
+  `BUILDKITE_SKIP_CHECKOUT` from plugin hooks and checks out as usual.
+
+The job pod receives every `BUILDKITE_*` variable from the agent's environment, including
+`BUILDKITE_SKIP_CHECKOUT=true` and `BUILDKITE_PLUGINS`. `lib/job.jsonnet` drops any incoming
+`BUILDKITE_SKIP_CHECKOUT`, including one set through the `environment` option, and sets exactly one
+`BUILDKITE_SKIP_CHECKOUT=false` on both pod containers. `--phases=checkout` skips the plugin and
+command phases, so the init container loads no plugins (this plugin included) and runs no command,
+no `pre-exit` hook and no artifact upload. The global and repository-local `post-checkout` hooks
+still run in the init container.
+
+The agent leaves its checkout directory as it was: empty on an agent that has never checked out
+the pipeline, or holding whatever commit an earlier job on that agent checked out, such as the
+pipeline upload step. Anything on the agent that reads repository files reads that directory, not
+`BUILDKITE_COMMIT`. That covers `artifact_paths` (already unusable, see above), repository-local
+hooks under `.buildkite/hooks` that the agent runs, and any other plugin listed on the same step.
+
 
 ## Example
 

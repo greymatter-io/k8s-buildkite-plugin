@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# The agent sources this hook in its plugin phase, before the checkout phase,
+# and reloads BUILDKITE_SKIP_CHECKOUT from the environment afterwards. The hook
+# ends without calling exit, because the agent discards the environment changes
+# of a hook that calls exit.
+
+set -euo pipefail
+
+# The bootstrap init container in the job pod clones the repository and checks
+# out BUILDKITE_COMMIT; the step runs on that checkout. Exporting
+# BUILDKITE_SKIP_CHECKOUT=true makes the agent skip its own clone of the
+# repository. lib/job.jsonnet sets BUILDKITE_SKIP_CHECKOUT=false in the pod
+# environment, so the pod's checkout always runs.
+#
+# The hook leaves the checkout on in two cases: on darwin, where hooks/command
+# runs BUILDKITE_COMMAND on the agent in the agent's checkout, and inside the job
+# pod, where BUILDKITE_PLUGIN_K8S_IS_JOB is set.
+# The unset test uses ${VAR+x} rather than -v, which macOS /bin/bash 3.2 cannot
+# parse.
+if [[ $OSTYPE != darwin* && -z ${BUILDKITE_PLUGIN_K8S_IS_JOB+x} ]]; then
+  export BUILDKITE_SKIP_CHECKOUT=true
+fi

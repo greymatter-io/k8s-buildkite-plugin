@@ -97,12 +97,18 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       if l != '' && !std.startsWith(l, 'BUILDKITE')
     ],
 
+  // hooks/environment sets BUILDKITE_SKIP_CHECKOUT=true on the agent, and the
+  // agent's env reaches this file as agentEnv. podEnv drops every incoming
+  // BUILDKITE_SKIP_CHECKOUT and appends a single BUILDKITE_SKIP_CHECKOUT=false,
+  // so the bootstrap init container always checks out the repository.
+  local skipCheckout = 'BUILDKITE_SKIP_CHECKOUT',
+
   local podEnv =
     stepEnv +
     [
       { name: f, value: env[f] }
       for f in std.objectFields(agentEnv)
-      if std.startsWith(f, 'BUILDKITE')
+      if std.startsWith(f, 'BUILDKITE') && f != skipCheckout
     ] +
     [
       {
@@ -128,8 +134,10 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       for f in std.sort(std.objectFields(env), numberSuffix)
       if std.startsWith(f, 'BUILDKITE_PLUGIN_K8S_ENVIRONMENT_')
          && !std.startsWith(f, 'BUILDKITE_PLUGIN_K8S_ENVIRONMENT_FROM_SECRET')
+         && std.splitLimit(env[f], '=', 1)[0] != skipCheckout
     ] + [
       {name: 'BUILDKITE_PLUGIN_K8S_IS_JOB', value: 'true'},
+      {name: skipCheckout, value: 'false'},
     ],
 
   local secretEnv =
@@ -370,7 +378,17 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       // wanting to re-add it. It is safe to keep dropping it. The narrower reason
       // is the per-job warning, not removal -- the --experiment flag itself still
       // exists in agent v4, only the git-mirrors value stopped being an experiment.
-      args: ['bootstrap', '--git-mirrors-path=/git-mirrors', '--ssh-keyscan', '--command', 'true'],
+      //
+      // --phases=checkout runs the checkout phase alone. podEnv carries the
+      // agent's BUILDKITE_PLUGINS, and without this flag the bootstrap clones
+      // every plugin the step names and runs their hooks inside the pod. With
+      // the plugin phase skipped no plugin is loaded, so no plugin hook runs.
+      // The bootstrap still runs the global environment hook, and the checkout
+      // phase still runs the global pre-checkout, checkout and post-checkout
+      // hooks and the repository's local post-checkout hook. The command phase
+      // is skipped too, so the bootstrap runs no command, no pre-exit hook and
+      // no artifact upload, and needs no --command.
+      args: ['bootstrap', '--phases=checkout', '--git-mirrors-path=/git-mirrors', '--ssh-keyscan'],
       env: podEnv,
       envFrom: initSecretEnv,
       resources: initResources,
