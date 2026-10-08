@@ -33,6 +33,7 @@ readonly job_apply_timeout_sec="${BUILDKITE_PLUGIN_K8S_JOB_APPLY_TIMEOUT_SEC:-12
 readonly log_loop_retry_interval_sec="${BUILDKITE_PLUGIN_K8S_LOG_RETRY_INTERVAL_SEC:-3}"
 readonly log_attempt_timeout_sec="${BUILDKITE_PLUGIN_K8S_LOG_ATTEMPT_TIMEOUT_SEC:-5}"
 readonly job_status_retry_interval_sec="${BUILDKITE_PLUGIN_K8S_JOB_STATUS_RETRY_INTERVAL_SEC:-5}"
+readonly pod_discovery_retry_interval_sec="${BUILDKITE_PLUGIN_K8S_POD_DISCOVERY_RETRY_INTERVAL_SEC:-1}"
 readonly log_complete_retry_interval_sec="${BUILDKITE_PLUGIN_K8S_LOG_COMPLETE_RETRY_INTERVAL_SEC:-1}"
 readonly log_complete_timeout_sec="${BUILDKITE_PLUGIN_K8S_LOG_COMPLETE_TIMEOUT_SEC:-30}"
 readonly use_agent_node_affinity=${BUILDKITE_PLUGIN_K8S_USE_AGENT_NODE_AFFINITY:-false}
@@ -52,7 +53,7 @@ readonly bootstrap_container_log_complete_marker_file
 step_container_log_complete_marker_file="$(mktemp)"
 readonly step_container_log_complete_marker_file
 
-# shellcheck disable=2317 # Shellcheck doesn't understand traps
+# shellcheck disable=2317,2329 # Shellcheck doesn't understand traps
 function cleanup {
   rm -f "$bootstrap_container_log_complete_marker_file" "$step_container_log_complete_marker_file"
 
@@ -63,6 +64,16 @@ function cleanup {
 }
 
 trap cleanup EXIT
+
+# Prints the whole seconds from now until the given $SECONDS value, or 0 once it has passed.
+function seconds_until {
+  local -r end_time="$1"
+  if [[ $end_time -gt $SECONDS ]]; then
+    echo "$((end_time - SECONDS))"
+  else
+    echo 0
+  fi
+}
 
 function tail_logs {
   local -r pod_name="$1"
@@ -136,8 +147,6 @@ if [[ -n $external_secrets || -n $external_secrets_list || -n $secret_store || -
     echo -e "Resulting k8s ExternalSecret spec:\n$external_secret_spec"
   fi
 
-  secret_exists=""
-  external_secret_status=""
   readonly secret_apply_end_time=$((SECONDS+30))
 
   set +e
@@ -145,21 +154,20 @@ if [[ -n $external_secrets || -n $external_secrets_list || -n $secret_store || -
   set -e
 
   echo "Waiting for Secret to become available"
-  while [ $SECONDS -lt $secret_apply_end_time ]; do
-    # Check if the secret exists
-    secret_exists=$(kubectl get secret "$job_name" > /dev/null 2>&1; echo $?)
-    external_secret_status=$(kubectl get ExternalSecret "$job_name" -o json | jq -r '.status.conditions[0].status')
-    if [ "$secret_exists" != 1 ] && [ "$external_secret_status" == "True" ]; then
-      echo "Secret Created"
-      break
-    fi
-  done
-
-  if [ "$secret_exists" == 1 ] || [ "$external_secret_status" != "True" ]; then
+  # Both waits share the 30 s budget that starts before the apply. Each kubectl
+  # wait watches its object; a --timeout of 0s checks once without waiting.
+  # The first wait returns when the ExternalSecret's Ready condition is True, the
+  # second when the Secret named after the job exists.
+  if kubectl wait "externalsecrets.external-secrets.io/$job_name" --for=condition=Ready \
+      --timeout="$(seconds_until "$secret_apply_end_time")s" > /dev/null 2>&1 \
+    && kubectl wait "secret/$job_name" --for=create \
+      --timeout="$(seconds_until "$secret_apply_end_time")s" > /dev/null 2>&1; then
+    echo "Secret Created"
+  else
     echo "Secret creation failed, check ExternalSecrets logs in your cluster"
     status=$(kubectl get ExternalSecret "$job_name" -o json | jq -r '.status.conditions[0].message')
     echo "External Secret Status: $status"
-    return 42
+    exit 42
   fi
 fi
 # End External Secrets Handler
@@ -209,7 +217,7 @@ fi
 
 echo "Timeout: ${timeout}s"
 
-counter="$timeout"
+readonly pod_discovery_end_time=$((SECONDS + timeout))
 while true
 do
   exit_status=0
@@ -231,12 +239,10 @@ do
   if [[ -n "$pod_name" ]]; then
     break
   else
-    sleep "$job_status_retry_interval_sec"
-    if [[ $timeout -gt 0 ]]; then
-      (( counter -= job_status_retry_interval_sec )) || {
-        echo "Warning: timed out while creating pod"
-        exit 42
-      }
+    sleep "$pod_discovery_retry_interval_sec"
+    if [[ $timeout -gt 0 && $SECONDS -ge $pod_discovery_end_time ]]; then
+      echo "Warning: timed out while creating pod"
+      exit 42
     fi
   fi
 done
@@ -252,25 +258,66 @@ fi
 echo "+++ :kubernetes: Running image: ${BUILDKITE_PLUGIN_K8S_IMAGE:-}"
 tail_logs "$pod_name" "step" "$step_container_log_complete_marker_file" &
 
-counter="$timeout"
+# Wait for the Job's first status condition. On a Job that is not suspended the
+# first condition is an outcome: SuccessCriteriaMet or Complete on success,
+# FailureTarget or Failed on failure. Each kubectl wait call watches the Job for
+# at most job_status_watch_max_sec and returns once .status.conditions[0] exists.
+# After every call one kubectl get reads the first condition type. The loop ends
+# with that type, with "not-found" when the Job does not exist, or with
+# "timed-out" once the timeout has passed; otherwise it starts another watch.
+# A timeout of 0 waits without a limit.
+readonly job_status_watch_max_sec=60
+readonly job_status_wait_start_time="$SECONDS"
 jobstatus=""
 while [[ -z "$jobstatus" ]] ; do
-  set +e
-  jobstatus=$(kubectl get job "${job_name}" -o 'jsonpath={.status.conditions[].type}')
-  set -e
-
-  if [[ -n "$jobstatus" ]]; then
-    break
-  else
-    sleep "$job_status_retry_interval_sec"
+  job_status_watch_sec="$job_status_watch_max_sec"
+  if [[ $timeout -gt 0 ]]; then
+    job_status_remaining_sec=$(( timeout - (SECONDS - job_status_wait_start_time) ))
+    if [[ $job_status_remaining_sec -le 0 ]]; then
+      jobstatus="timed-out"
+      break
+    fi
+    if [[ $job_status_remaining_sec -lt $job_status_watch_sec ]]; then
+      job_status_watch_sec="$job_status_remaining_sec"
+    fi
   fi
 
-  if [[ $timeout -gt 0 ]]; then
-    (( counter -= job_status_retry_interval_sec )) || jobstatus="timed-out"
+  job_status_watch_start_time="$SECONDS"
+  set +e
+  kubectl wait "job/${job_name}" --for='jsonpath={.status.conditions[0].type}' \
+    --timeout="${job_status_watch_sec}s" > /dev/null 2>&1
+  job_status_watch_exit_code=$?
+  jobstatus=$(kubectl get job "${job_name}" -o 'jsonpath={.status.conditions[].type}')
+  job_status_get_exit_code=$?
+  # --ignore-not-found prints nothing and exits 0 when the Job does not exist.
+  if [[ $job_status_get_exit_code -ne 0 ]] \
+      && job_lookup=$(kubectl get job "${job_name}" --ignore-not-found -o name) \
+      && [[ -z "$job_lookup" ]]; then
+    echo "Warning: job ${job_name} not found"
+    jobstatus="not-found"
+  fi
+  set -e
+
+  # A kubectl wait that exits non-zero before its timeout, with no condition read
+  # after it, ended on an error such as an unreachable API server. Sleep before
+  # the next one.
+  if [[ -z "$jobstatus" && $job_status_watch_exit_code -ne 0 \
+        && $((SECONDS - job_status_watch_start_time)) -lt $job_status_watch_sec ]]; then
+    sleep "$job_status_retry_interval_sec"
   fi
 done
 
-echo "job status: $jobstatus"
+# The exit-code loop below spends the rest of the timeout in steps of
+# job_status_retry_interval_sec and stops when the counter reaches 0, so the
+# counter starts at a multiple of that interval. An interval of 0 leaves the
+# counter at the remaining seconds.
+counter=$(( timeout - (SECONDS - job_status_wait_start_time) ))
+if [[ $job_status_retry_interval_sec -gt 0 ]]; then
+  counter=$(( counter / job_status_retry_interval_sec * job_status_retry_interval_sec ))
+fi
+if [[ $counter -lt 0 ]]; then
+  counter=0
+fi
 
 # Wait for logs to be fully printed, printing runs in a separate process and we're racing with it.
 readonly log_complete_start_time="$SECONDS"
@@ -278,6 +325,8 @@ while [[ "$(cat "$step_container_log_complete_marker_file")" != "0" ]] && [[ "$(
 do
   sleep "$log_complete_retry_interval_sec"
 done
+
+echo "job status: $jobstatus"
 
 status=""
 if [[ "$jobstatus" == "Complete" || "$jobstatus" == "SuccessCriteriaMet" ]] ; then

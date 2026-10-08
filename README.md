@@ -429,8 +429,14 @@ env:
 
 ### BUILDKITE_PLUGIN_K8S_JOB_STATUS_RETRY_INTERVAL_SEC
 
-- Configures the interval between attempts to get k8s job status
+- Configures the pause before retrying a k8s job status watch that failed, and the interval between attempts to read the job pod's exit code
 - Default: `5`
+- Unit type: integer seconds
+
+### BUILDKITE_PLUGIN_K8S_POD_DISCOVERY_RETRY_INTERVAL_SEC
+
+- Configures the interval between attempts to find the k8s job's pod
+- Default: `1`
 - Unit type: integer seconds
 
 ### BUILDKITE_PLUGIN_K8S_LOG_COMPLETE_RETRY_INTERVAL_SEC
