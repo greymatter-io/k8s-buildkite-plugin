@@ -21,10 +21,23 @@ function sanitize() {
 job_name=$(sanitize "${BUILDKITE_PIPELINE_SLUG}-${BUILDKITE_BUILD_NUMBER}-$(head -c 5 /dev/urandom | base32 | tr '[:upper:]' '[:lower:]')")
 echo "${job_name}" > /tmp/job_name
 
-if [[ ${BUILDKITE_TIMEOUT:-"false"} == "false" ]]; then
+# BUILDKITE_TIMEOUT is the step timeout in minutes, or "false" when the step has
+# none. Unset, "false" and 0 set timeout to 0, which puts no limit on the hook's
+# waits. lib/job.jsonnet renders the exported BUILDKITE_TIMEOUT into the Job's
+# activeDeadlineSeconds, which Kubernetes requires to be at least 1, so those
+# three values export 600 and the Job runs for at most 600 minutes.
+if [[ ${BUILDKITE_TIMEOUT:-false} == "false" ]]; then
+  BUILDKITE_TIMEOUT=0
+fi
+if [[ ! $BUILDKITE_TIMEOUT =~ ^[0-9]+$ ]]; then
+  echo "Error: BUILDKITE_TIMEOUT must be a whole number of minutes or false, got '${BUILDKITE_TIMEOUT}'" >&2
+  exit 1
+fi
+BUILDKITE_TIMEOUT=$((10#$BUILDKITE_TIMEOUT))
+timeout=$((BUILDKITE_TIMEOUT * 60))
+if [[ $timeout -eq 0 ]]; then
   BUILDKITE_TIMEOUT=600
 fi
-((timeout=BUILDKITE_TIMEOUT*60))
 export BUILDKITE_TIMEOUT
 
 # Default values can be overridden by setting "BUILDKITE_PLUGIN_K8S_*" env vars as used below.
@@ -215,7 +228,11 @@ if [[ "$job_apply_exit_code" != "0" ]]; then
   exit "$job_apply_exit_code"
 fi
 
-echo "Timeout: ${timeout}s"
+if [[ $timeout -gt 0 ]]; then
+  echo "Timeout: ${timeout}s"
+else
+  echo "Timeout: none"
+fi
 
 readonly pod_discovery_end_time=$((SECONDS + timeout))
 while true
