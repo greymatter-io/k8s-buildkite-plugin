@@ -21,10 +21,23 @@ function sanitize() {
 job_name=$(sanitize "${BUILDKITE_PIPELINE_SLUG}-${BUILDKITE_BUILD_NUMBER}-$(head -c 5 /dev/urandom | base32 | tr '[:upper:]' '[:lower:]')")
 echo "${job_name}" > /tmp/job_name
 
-if [[ ${BUILDKITE_TIMEOUT:-"false"} == "false" ]]; then
+# BUILDKITE_TIMEOUT is the step timeout in minutes, or "false" when the step has
+# none. Unset, "false" and 0 set timeout to 0, which puts no limit on the hook's
+# waits. lib/job.jsonnet renders the exported BUILDKITE_TIMEOUT into the Job's
+# activeDeadlineSeconds, which Kubernetes requires to be at least 1, so those
+# three values export 600 and the Job runs for at most 600 minutes.
+if [[ ${BUILDKITE_TIMEOUT:-false} == "false" ]]; then
+  BUILDKITE_TIMEOUT=0
+fi
+if [[ ! $BUILDKITE_TIMEOUT =~ ^[0-9]+$ ]]; then
+  echo "Error: BUILDKITE_TIMEOUT must be a whole number of minutes or false, got '${BUILDKITE_TIMEOUT}'" >&2
+  exit 1
+fi
+BUILDKITE_TIMEOUT=$((10#$BUILDKITE_TIMEOUT))
+timeout=$((BUILDKITE_TIMEOUT * 60))
+if [[ $timeout -eq 0 ]]; then
   BUILDKITE_TIMEOUT=600
 fi
-((timeout=BUILDKITE_TIMEOUT*60))
 export BUILDKITE_TIMEOUT
 
 # Default values can be overridden by setting "BUILDKITE_PLUGIN_K8S_*" env vars as used below.
@@ -215,9 +228,16 @@ if [[ "$job_apply_exit_code" != "0" ]]; then
   exit "$job_apply_exit_code"
 fi
 
-echo "Timeout: ${timeout}s"
+if [[ $timeout -gt 0 ]]; then
+  echo "Timeout: ${timeout}s"
+else
+  echo "Timeout: none"
+fi
 
-readonly pod_discovery_end_time=$((SECONDS + timeout))
+# Pod discovery ends at the Job's activeDeadlineSeconds, BUILDKITE_TIMEOUT
+# minutes, which is 600 minutes when the step has no timeout. Kubernetes starts no
+# pod for the Job after that deadline.
+readonly pod_discovery_end_time=$((SECONDS + BUILDKITE_TIMEOUT * 60))
 while true
 do
   exit_status=0
@@ -240,7 +260,7 @@ do
     break
   else
     sleep "$pod_discovery_retry_interval_sec"
-    if [[ $timeout -gt 0 && $SECONDS -ge $pod_discovery_end_time ]]; then
+    if [[ $SECONDS -ge $pod_discovery_end_time ]]; then
       echo "Warning: timed out while creating pod"
       exit 42
     fi
@@ -307,17 +327,16 @@ while [[ -z "$jobstatus" ]] ; do
   fi
 done
 
-# The exit-code loop below spends the rest of the timeout in steps of
-# job_status_retry_interval_sec and stops when the counter reaches 0, so the
-# counter starts at a multiple of that interval. An interval of 0 leaves the
-# counter at the remaining seconds.
-counter=$(( timeout - (SECONDS - job_status_wait_start_time) ))
-if [[ $job_status_retry_interval_sec -gt 0 ]]; then
-  counter=$(( counter / job_status_retry_interval_sec * job_status_retry_interval_sec ))
+# A Job with no outcome when the timeout passes fails the step with 42, whatever
+# its pod does afterwards. The step container's log stream keeps running until
+# the pod ends, so the hook exits without waiting for it.
+if [[ "$jobstatus" == "timed-out" ]]; then
+  echo "Warning: timed out after ${timeout}s waiting for job ${job_name} to finish"
+  exit 42
 fi
-if [[ $counter -lt 0 ]]; then
-  counter=0
-fi
+
+# The exit-code loop below reads the pod until this time; a timeout of 0 sets no limit.
+readonly exit_code_end_time=$((job_status_wait_start_time + timeout))
 
 # Wait for logs to be fully printed, printing runs in a separate process and we're racing with it.
 readonly log_complete_start_time="$SECONDS"
@@ -364,11 +383,9 @@ else
       break
     else
       sleep "$job_status_retry_interval_sec"
-      if [[ $timeout -gt 0 ]]; then
-        (( counter -= job_status_retry_interval_sec )) || {
-          echo "Warning: timed out while checking init container status"
-          break
-        }
+      if [[ $timeout -gt 0 && $SECONDS -ge $exit_code_end_time ]]; then
+        echo "Warning: timed out while reading the exit code of pod ${pod_name}"
+        break
       fi
     fi
   done
