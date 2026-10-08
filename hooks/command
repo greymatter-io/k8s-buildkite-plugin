@@ -309,8 +309,12 @@ done
 
 # The exit-code loop below spends the rest of the timeout in steps of
 # job_status_retry_interval_sec and stops when the counter reaches 0, so the
-# counter starts at a multiple of that interval.
-counter=$(( (timeout - (SECONDS - job_status_wait_start_time)) / job_status_retry_interval_sec * job_status_retry_interval_sec ))
+# counter starts at a multiple of that interval. An interval of 0 leaves the
+# counter at the remaining seconds.
+counter=$(( timeout - (SECONDS - job_status_wait_start_time) ))
+if [[ $job_status_retry_interval_sec -gt 0 ]]; then
+  counter=$(( counter / job_status_retry_interval_sec * job_status_retry_interval_sec ))
+fi
 if [[ $counter -lt 0 ]]; then
   counter=0
 fi
