@@ -234,7 +234,10 @@ else
   echo "Timeout: none"
 fi
 
-readonly pod_discovery_end_time=$((SECONDS + timeout))
+# Pod discovery ends at the Job's activeDeadlineSeconds, BUILDKITE_TIMEOUT
+# minutes, which is 600 minutes when the step has no timeout. Kubernetes starts no
+# pod for the Job after that deadline.
+readonly pod_discovery_end_time=$((SECONDS + BUILDKITE_TIMEOUT * 60))
 while true
 do
   exit_status=0
@@ -257,7 +260,7 @@ do
     break
   else
     sleep "$pod_discovery_retry_interval_sec"
-    if [[ $timeout -gt 0 && $SECONDS -ge $pod_discovery_end_time ]]; then
+    if [[ $SECONDS -ge $pod_discovery_end_time ]]; then
       echo "Warning: timed out while creating pod"
       exit 42
     fi
