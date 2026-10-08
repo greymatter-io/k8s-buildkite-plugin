@@ -307,17 +307,16 @@ while [[ -z "$jobstatus" ]] ; do
   fi
 done
 
-# The exit-code loop below spends the rest of the timeout in steps of
-# job_status_retry_interval_sec and stops when the counter reaches 0, so the
-# counter starts at a multiple of that interval. An interval of 0 leaves the
-# counter at the remaining seconds.
-counter=$(( timeout - (SECONDS - job_status_wait_start_time) ))
-if [[ $job_status_retry_interval_sec -gt 0 ]]; then
-  counter=$(( counter / job_status_retry_interval_sec * job_status_retry_interval_sec ))
+# A Job with no outcome when the timeout passes fails the step with 42, whatever
+# its pod does afterwards. The step container's log stream keeps running until
+# the pod ends, so the hook exits without waiting for it.
+if [[ "$jobstatus" == "timed-out" ]]; then
+  echo "Warning: timed out after ${timeout}s waiting for job ${job_name} to finish"
+  exit 42
 fi
-if [[ $counter -lt 0 ]]; then
-  counter=0
-fi
+
+# The exit-code loop below reads the pod until this time; a timeout of 0 sets no limit.
+readonly exit_code_end_time=$((job_status_wait_start_time + timeout))
 
 # Wait for logs to be fully printed, printing runs in a separate process and we're racing with it.
 readonly log_complete_start_time="$SECONDS"
@@ -364,11 +363,9 @@ else
       break
     else
       sleep "$job_status_retry_interval_sec"
-      if [[ $timeout -gt 0 ]]; then
-        (( counter -= job_status_retry_interval_sec )) || {
-          echo "Warning: timed out while checking init container status"
-          break
-        }
+      if [[ $timeout -gt 0 && $SECONDS -ge $exit_code_end_time ]]; then
+        echo "Warning: timed out while reading the exit code of pod ${pod_name}"
+        break
       fi
     fi
   done
