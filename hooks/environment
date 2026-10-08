@@ -16,6 +16,8 @@ set -euo pipefail
 # The hook leaves the checkout on in two cases: on darwin, where hooks/command
 # runs BUILDKITE_COMMAND on the agent in the agent's checkout, and inside the job
 # pod, where BUILDKITE_PLUGIN_K8S_IS_JOB is set.
-if [[ $OSTYPE != darwin* && ! -v BUILDKITE_PLUGIN_K8S_IS_JOB ]]; then
+# The unset test uses ${VAR+x} rather than -v, which macOS /bin/bash 3.2 cannot
+# parse.
+if [[ $OSTYPE != darwin* && -z ${BUILDKITE_PLUGIN_K8S_IS_JOB+x} ]]; then
   export BUILDKITE_SKIP_CHECKOUT=true
 fi
