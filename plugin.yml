@@ -45,6 +45,11 @@ configuration:
       type: string
     agent-token-secret-key:
       type: string
+    # Accepted so that existing pipelines pass validation. It has no effect.
+    agent-token-ssh-secret-key:
+      type: string
+    mount-buildkite-agent:
+      type: boolean
     default-secret-name:
       type: string
     secret-store:

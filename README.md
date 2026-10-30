@@ -44,7 +44,9 @@ cases keep the agent's checkout:
 The job pod receives every `BUILDKITE_*` variable from the agent's environment, including
 `BUILDKITE_SKIP_CHECKOUT=true` and `BUILDKITE_PLUGINS`. `lib/job.jsonnet` drops any incoming
 `BUILDKITE_SKIP_CHECKOUT`, including one set through the `environment` option, and sets exactly one
-`BUILDKITE_SKIP_CHECKOUT=false` on both pod containers. `--phases=checkout` skips the plugin and
+`BUILDKITE_SKIP_CHECKOUT=false` on both pod containers. It also drops
+`BUILDKITE_GIT_COMMIT_VERIFICATION` when the value is empty: agent v3 exports the empty string when
+the setting is unset, and the agent v4 bootstrap rejects it. `--phases=checkout` skips the plugin and
 command phases, so the init container loads no plugins (this plugin included) and runs no command,
 no `pre-exit` hook and no artifact upload. The global and repository-local `post-checkout` hooks
 still run in the init container.
@@ -168,7 +170,7 @@ Example: `my-secrets`
 
 ### `init-image` (optional, string)
 
-Override the [job initContainer](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/). A buildkite-agent binary is expected to exist to do the checkout, along with git and ssh. The default is `pipeline-oci.download.greymatter.io/buildkite-agent:latest`, a multi-arch image (the upstream default `embarkstudios/k8s-buildkite-agent` is amd64-only and fails on the ARM builder pool). If set to an empty string no init container is used.
+Override the [job initContainer](https://kubernetes.io/docs/concepts/workloads/pods/init-containers/). A buildkite-agent binary is expected to exist to do the checkout, along with git and ssh. The default is `pipeline-oci.download.greymatter.io/buildkite-agent:3.138.0`, a multi-arch image (the upstream default `embarkstudios/k8s-buildkite-agent` is amd64-only and fails on the ARM builder pool). The tag is the agent version that the build-system agent Deployments run. Move it only after every agent runs the new version. Each agent clones this plugin once per container, so restart the agent Deployments to roll a change of the default. If set to an empty string no init container is used.
 
 The init container always uses `imagePullPolicy: IfNotPresent`, so a job pod takes the init image from the node's image cache and pulls it only when the node does not hold it; `always-pull` does not apply to it. In the Greymatter build cluster the `buildkite-image-prepull` DaemonSet (build-system `infra/k8s/buildkite/image-prepull.yaml`) pulls the agent image onto every builder node. After a new agent image is published, run `kubectl rollout restart daemonset/buildkite-image-prepull -n buildkite` to re-pull it on every node.
 

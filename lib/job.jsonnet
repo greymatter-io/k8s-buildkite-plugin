@@ -33,7 +33,10 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_AGENT_META_DATA_QUEUE: '',
     // Multi-arch. The upstream default (embarkstudios/k8s-buildkite-agent, amd64 only) fails with
     // "exec format error" whenever a job lands on the ARM builder pool.
-    BUILDKITE_PLUGIN_K8S_INIT_IMAGE: 'pipeline-oci.download.greymatter.io/buildkite-agent:latest',
+    // The tag is the agent version that the build-system agent Deployments run
+    // (infra/k8s/buildkite/agent-deployment.yaml). Move it only after every agent runs the new
+    // version, and roll it with an agent restart: each agent clones this plugin once per container.
+    BUILDKITE_PLUGIN_K8S_INIT_IMAGE: 'pipeline-oci.download.greymatter.io/buildkite-agent:3.138.0',
     BUILDKITE_PLUGIN_K8S_ALWAYS_PULL: false,
     // Needed to pull the default init image above from the private registry. See
     // imagePullSecrets below: the Nexus secret is always attached as well.
@@ -86,6 +89,15 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_PLUGIN_K8S_JOB_BACKOFF_LIMIT: '0',
   } + agentEnv,
 
+  // The agent writes each variable of the step env file as NAME="value", with the value
+  // quoted as a Go string. Agent v4 also writes the names of some agent variables with no
+  // `=` and no value. stepEnv keeps NAME="value" lines only, so a line of any other shape
+  // does not stop the render.
+  local isQuotedAssignment(l) =
+    local kv = std.splitLimit(l, '=', 1);
+    std.length(kv) == 2 && std.length(kv[1]) >= 2
+    && std.startsWith(kv[1], '"') && std.endsWith(kv[1], '"'),
+
   local stepEnv =
     [
       {
@@ -94,8 +106,14 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
         value: std.parseJson(kv[1]),
       }
       for l in std.split(stepEnvFile, '\n')
-      if l != '' && !std.startsWith(l, 'BUILDKITE')
+      if l != '' && !std.startsWith(l, 'BUILDKITE') && isQuotedAssignment(l)
     ],
+
+  // An agent v3 with no git-commit-verification setting exports
+  // BUILDKITE_GIT_COMMIT_VERIFICATION as the empty string. A v4 bootstrap rejects the empty
+  // value and fails the init container. podEnv drops the variable when it is empty, so a v3
+  // bootstrap runs with no check and a v4 bootstrap uses its default, strict.
+  local commitVerification = 'BUILDKITE_GIT_COMMIT_VERIFICATION',
 
   // hooks/environment sets BUILDKITE_SKIP_CHECKOUT=true on the agent, and the
   // agent's env reaches this file as agentEnv. podEnv drops every incoming
@@ -109,6 +127,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       { name: f, value: env[f] }
       for f in std.objectFields(agentEnv)
       if std.startsWith(f, 'BUILDKITE') && f != skipCheckout
+         && !(f == commitVerification && env[f] == '')
     ] +
     [
       {
