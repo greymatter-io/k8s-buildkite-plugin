@@ -36,7 +36,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     // The tag is the agent version that the build-system agent Deployments run
     // (infra/k8s/buildkite/agent-deployment.yaml). Move it only after every agent runs the new
     // version, and roll it with an agent restart: each agent clones this plugin once per container.
-    BUILDKITE_PLUGIN_K8S_INIT_IMAGE: 'pipeline-oci.download.greymatter.io/buildkite-agent:3.138.0',
+    BUILDKITE_PLUGIN_K8S_INIT_IMAGE: 'pipeline-oci.download.greymatter.io/buildkite-agent:4.9.0',
     BUILDKITE_PLUGIN_K8S_ALWAYS_PULL: false,
     // Needed to pull the default init image above from the private registry. See
     // imagePullSecrets below: the Nexus secret is always attached as well.
