@@ -98,6 +98,63 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     std.length(kv) == 2 && std.length(kv[1]) >= 2
     && std.startsWith(kv[1], '"') && std.endsWith(kv[1], '"'),
 
+  // OpenTelemetry tracing. The hooks run with TRACEPARENT and TRACESTATE set to the
+  // context of the hook span, and with the agent's OTEL_* exporter settings. traceEnv
+  // gives the Job pod the exporter settings and that context:
+  //  - The bootstrap init container reads its parent span from
+  //    BUILDKITE_TRACING_TRACEPARENT and BUILDKITE_TRACING_TRACESTATE.
+  //  - A command in the step container reads TRACEPARENT and TRACESTATE.
+  //  - OTEL_RESOURCE_ATTRIBUTES names the Job pod and its node instead of the agent pod.
+  // podEnv takes these variables from traceEnv only, so the Job pod has one copy of each.
+  local tracing = std.get(agentEnv, 'BUILDKITE_OPENTELEMETRY_TRACING', '') == 'true',
+  local traceContextVars = [
+    'TRACEPARENT',
+    'TRACESTATE',
+    'BUILDKITE_TRACING_TRACEPARENT',
+    'BUILDKITE_TRACING_TRACESTATE',
+  ],
+  local isTraceVar(name) =
+    tracing && (std.member(traceContextVars, name) || std.startsWith(name, 'OTEL_')),
+  local jobPodResourceAttrs = ['k8s.pod.name', 'k8s.node.name'],
+  local resourceAttrs =
+    std.join(',', [
+      a
+      for a in std.split(std.get(agentEnv, 'OTEL_RESOURCE_ATTRIBUTES', ''), ',')
+      if a != '' && !std.member(jobPodResourceAttrs, std.splitLimit(a, '=', 1)[0])
+    ] + [
+      'k8s.pod.name=$(K8S_POD_NAME)',
+      'k8s.node.name=$(K8S_NODE_NAME)',
+    ]),
+  local traceContext(name) =
+    local v = std.get(agentEnv, name, '');
+    if v != '' then [{ name: name, value: v }] else [],
+  local traceEnv =
+    if !tracing then []
+    else
+      [
+        { name: f, value: agentEnv[f] }
+        for f in std.objectFields(agentEnv)
+        if std.startsWith(f, 'OTEL_') && f != 'OTEL_RESOURCE_ATTRIBUTES'
+      ] + [
+        { name: 'K8S_POD_NAME', valueFrom: { fieldRef: { fieldPath: 'metadata.name' } } },
+        { name: 'K8S_NODE_NAME', valueFrom: { fieldRef: { fieldPath: 'spec.nodeName' } } },
+        { name: 'OTEL_RESOURCE_ATTRIBUTES', value: resourceAttrs },
+      ]
+      + traceContext('TRACEPARENT')
+      + traceContext('TRACESTATE')
+      + (
+        if std.get(agentEnv, 'TRACEPARENT', '') != '' then
+          [{ name: 'BUILDKITE_TRACING_TRACEPARENT', value: agentEnv.TRACEPARENT }]
+          + (
+            if std.get(agentEnv, 'TRACESTATE', '') != ''
+            then [{ name: 'BUILDKITE_TRACING_TRACESTATE', value: agentEnv.TRACESTATE }]
+            else []
+          )
+        else
+          traceContext('BUILDKITE_TRACING_TRACEPARENT')
+          + traceContext('BUILDKITE_TRACING_TRACESTATE')
+      ),
+
   local stepEnv =
     [
       {
@@ -107,6 +164,7 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       }
       for l in std.split(stepEnvFile, '\n')
       if l != '' && !std.startsWith(l, 'BUILDKITE') && isQuotedAssignment(l)
+         && !isTraceVar(std.splitLimit(l, '=', 1)[0])
     ],
 
   // An agent v3 with no git-commit-verification setting exports
@@ -128,7 +186,8 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
       for f in std.objectFields(agentEnv)
       if std.startsWith(f, 'BUILDKITE') && f != skipCheckout
          && !(f == commitVerification && env[f] == '')
-    ] +
+         && !isTraceVar(f)
+    ] + traceEnv +
     [
       {
         name: 'BUILDKITE_AGENT_TOKEN',
