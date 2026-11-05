@@ -12,6 +12,7 @@ if [[ -v "BUILDKITE_PLUGIN_K8S_IS_JOB" ]]; then
 fi
 
 basedir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd .. && pwd )"
+source "${basedir}/lib/resolve-image.sh"
 
 # Ensure a name is a valid k8s resource name.
 function sanitize() {
@@ -187,6 +188,11 @@ fi
 
 
 echo "--- :kubernetes: Starting Kubernetes Job"
+
+# When always-pull is true and the image is on a Nexus host, the step runs the
+# image by digest with IfNotPresent. If the resolution fails, the step keeps the
+# tag. See lib/resolve-image.sh.
+apply_step_image_resolution
 
 export patchFunc=${BUILDKITE_PLUGIN_K8S_PATCH:-"function(f) f"}
 
