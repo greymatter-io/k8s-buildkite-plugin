@@ -127,6 +127,16 @@ Whether to always pull the latest image before running the command. Sets [imageP
 
 Default: `false`
 
+#### Step images on Nexus
+
+When `always-pull` is `true` and the `image` is on a Nexus host, the plugin runs the image by digest with `imagePullPolicy: IfNotPresent`. A Nexus host is the Nexus registry `download.greymatter.io` or a subdomain of it, with or without a port. A node that already has that digest starts the step without a pull. The plugin does not change an `image` that has a digest or that is on another registry. It also does not change the `image` when `image-pull-secret` is an empty string.
+
+- In the first job of a build that uses the `image`, the plugin sends one manifest `HEAD` request to the registry. The request uses the credential that the `nexus-agent-pull-secret` secret holds for the image host. The plugin stores the digest in build meta-data and logs `Step image <image> resolved to <digest>`.
+- In later jobs of the build that use the same `image`, the plugin reads the digest from build meta-data. It sends no request to the registry. It logs `Step image <image> from build meta-data: <digest>`. A retried job also reads the digest of its build. All jobs in a build that use the same `image` run the same digest. A push to the tag during the build does not change that digest.
+- The step container gets the image `<host>/<repository>@<digest>` and `imagePullPolicy: IfNotPresent`. The plugin prints that reference in the `+++ Running image:` header. In the job pod environment, `BUILDKITE_PLUGIN_K8S_IMAGE` is that reference and `BUILDKITE_PLUGIN_K8S_ALWAYS_PULL` is `false`.
+
+If the plugin cannot get a digest, it logs one `Warning: step image <image>: <cause>` line. Then it logs `Warning: using the tag because step image resolution failed for <image>`. The step container runs the image by tag with `imagePullPolicy: Always`. The causes include a missing `nexus-agent-pull-secret` secret, a registry response other than `200`, and a build meta-data error. A request that takes longer than the `BUILDKITE_PLUGIN_K8S_IMAGE_RESOLVE_TIMEOUT_SEC` time limit is also a cause.
+
 ### ``image-pull-secret`` (optional, string)
 
 The name of the secret that holds the credentials for a remote container registry. Default: `nexus-agent-pull-secret`, which the default `init-image` needs. Whatever you set, the job pod also carries `nexus-agent-pull-secret`; set it to an empty string to attach no secret at all.
@@ -507,6 +517,12 @@ env:
 
 - Configures the total time limit across attempts to cleanup finished jobs
 - Default: `60`
+- Unit type: integer seconds
+
+### BUILDKITE_PLUGIN_K8S_IMAGE_RESOLVE_TIMEOUT_SEC
+
+- Configures the time limit for each of the two calls that resolve a Nexus step image: `kubectl get secret` and the manifest `HEAD` request
+- Default: `10`
 - Unit type: integer seconds
 
 ## Contributing
