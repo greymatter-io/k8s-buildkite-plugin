@@ -84,6 +84,8 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     BUILDKITE_PLUGIN_K8S_RESOURCES_REQUEST_MEMORY: '1536Mi',
     BUILDKITE_PLUGIN_K8S_RESOURCES_LIMIT_MEMORY: '',
     BUILDKITE_PLUGIN_K8S_SERVICE_ACCOUNT_NAME: 'default',
+    // Empty means the pod spec has no automountServiceAccountToken field.
+    BUILDKITE_PLUGIN_K8S_AUTOMOUNT_SERVICE_ACCOUNT_TOKEN: '',
     BUILDKITE_PLUGIN_K8S_WORKDIR: std.join('/', [env.BUILDKITE_BUILD_PATH, buildSubPath]),
     BUILDKITE_PLUGIN_K8S_JOB_TTL_SECONDS_AFTER_FINISHED: '86400',
     BUILDKITE_PLUGIN_K8S_JOB_BACKOFF_LIMIT: '0',
@@ -349,6 +351,46 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
     ],
   },
 
+  // mount-emptydir: each entry is a mount path in the step container. Each path gets its own
+  // emptyDir volume, named emptydir-<index>. The option is BUILDKITE_PLUGIN_K8S_MOUNT_EMPTYDIR for
+  // a string, or BUILDKITE_PLUGIN_K8S_MOUNT_EMPTYDIR_<digits> for each entry of an array. Other
+  // names with the same prefix are not entries.
+  local emptyDirPrefix = 'BUILDKITE_PLUGIN_K8S_MOUNT_EMPTYDIR',
+  local isEmptyDirVar(f) =
+    local suffix = std.substr(f, std.length(emptyDirPrefix) + 1, std.length(f));
+    f == emptyDirPrefix
+    || (std.startsWith(f, emptyDirPrefix + '_') && suffix != ''
+        && std.length([c for c in std.stringChars(suffix) if !std.member('0123456789', c)]) == 0),
+  local emptyDirMount = {
+    local cfg =
+      std.mapWithIndex(
+        function(i, p) { name: 'emptydir-' + i, path: p },
+        [
+          env[f]
+          for f in std.sort(std.objectFields(env), numberSuffix)
+          if isEmptyDirVar(f) && env[f] != ''
+        ]
+      ),
+    mount: [
+      { name: c.name, mountPath: c.path }
+      for c in cfg
+    ],
+    volume: [
+      { name: c.name, emptyDir: {} }
+      for c in cfg
+    ],
+  },
+
+  // automount-service-account-token: sets automountServiceAccountToken in the pod spec. When the
+  // option is not set, the pod spec has no such field.
+  local automountServiceAccountToken =
+    local set = std.toString(env.BUILDKITE_PLUGIN_K8S_AUTOMOUNT_SERVICE_ACCOUNT_TOKEN);
+    local v = std.asciiLower(set);
+    if v == '' then {}
+    else if v == 'true' then { automountServiceAccountToken: true }
+    else if v == 'false' then { automountServiceAccountToken: false }
+    else error 'automount-service-account-token must be true or false, got: ' + set,
+
   local secretMount = {
     local cfg = [
       local parts = std.splitLimit(env[f], ':', 1);
@@ -592,7 +634,8 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
               { mountPath: env.BUILDKITE_PLUGIN_K8S_WORKDIR, name: 'build', subPath: buildSubPath },
               { mountPath: '/build', name: 'build', subPath: buildSubPath },
               { mountPath: '/git-mirrors', name: 'git-mirrors' },
-            ] + secretMount.mount + externalSecrets.mount + hostPathMount.mount + agentMount,
+            ] + secretMount.mount + externalSecrets.mount + hostPathMount.mount + emptyDirMount.mount
+            + agentMount,
             workingDir: '/build',
           } + commandArgs,
         ],
@@ -600,8 +643,8 @@ function(jobName, agentEnv={}, stepEnvFile='', patchFunc=identity) patchFunc({
           { name: 'build' } + buildVolume,
           { name: 'git-mirrors' } + gitMirrorsVolume,
           { name: 'buildkite-agent', emptyDir: {} },
-        ] + gitCredentials.volume + gitSSH.volume + secretMount.volume + externalSecrets.volume + hostPathMount.volume + defaultSecretsMounts.volume,
-      },
+        ] + gitCredentials.volume + gitSSH.volume + secretMount.volume + externalSecrets.volume + hostPathMount.volume + emptyDirMount.volume + defaultSecretsMounts.volume,
+      } + automountServiceAccountToken,
     },
   },
 })
