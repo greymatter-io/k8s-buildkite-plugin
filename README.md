@@ -223,6 +223,33 @@ Multiple host paths may be mounted by specifying a list of host/mount pairs.
 
 Example: `my-secret:/my/secret`
 
+### `mount-emptydir` (optional, string or array)
+
+Mount an [emptyDir](https://kubernetes.io/docs/concepts/storage/volumes/#emptydir) volume at a
+path inside the step container. Each entry is a mount path. Each path gets its own `emptyDir`
+volume with the default settings. The volume is on the disk of the node, and Kubernetes deletes
+it when the job pod is deleted.
+
+Use it for data that must not be on the overlay root filesystem of the container. For example,
+container storage for a nested container runtime must be on a volume.
+
+An entry is a path only. To set options of the volume, such as `medium` or `sizeLimit`, use
+[`patch`](#patch-optional-string).
+
+Each path must be unique across all mounts of the step container. The API server rejects a pod
+with two mounts at the same path.
+
+The plugin names the volume of each entry `emptydir-<index>`. `<index>` is the zero-based position
+of the entry among the non-empty entries. A `patch` that names one of these volumes therefore
+depends on the order of the list. The plugin applies `patch` after it adds these volumes.
+
+Example:
+```yaml
+mount-emptydir:
+  - /var/lib/containers
+  - /scratch
+```
+
 ### `mount-secret` (optional, string or array)
 
 Mount a secret as a directory inside the container. Must be in the form of `secretName:/some/mount/path`.
@@ -370,6 +397,20 @@ node and there is nothing useful to tune.
 Sets the [service account](https://kubernetes.io/docs/tasks/configure-pod-container/configure-service-account/) for the build container.
 
 Default: `default`
+
+### `automount-service-account-token` (optional, boolean)
+
+Sets `automountServiceAccountToken` in the pod spec of the job. With `false`, the job pod gets no
+service account token. Use `false` when the step does not call the Kubernetes API of the cluster
+that runs the job.
+
+The plugin accepts `true` and `false` in any letter case. Any other value stops the step with an
+error.
+
+When the option is not set, the pod spec has no `automountServiceAccountToken` field, and the
+setting of the service account applies.
+
+Example: `false`
 
 ### `use-agent-node-affinity` (optional, boolean)
 

@@ -27,6 +27,8 @@ configuration:
       type: string
     mount-hostpath:
       type: [string, array]
+    mount-emptydir:
+      type: [string, array]
     mount-secret:
       type: [string, array]
     mount-secret-permissions:
@@ -93,6 +95,8 @@ configuration:
       type: string
     service-account-name:
       type: string
+    automount-service-account-token:
+      type: boolean
     # Accepted so existing pipelines keep validating; has no effect. Job placement
     # follows the agent's queue tag, see README.md, "Node placement".
     use-agent-node-affinity:
