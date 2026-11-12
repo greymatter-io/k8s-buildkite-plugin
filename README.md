@@ -287,6 +287,12 @@ Mount one or many secrets as a directory inside the container from an external s
 `external-secrets-mount-path` can be set to change where the secrets are mounted, but they must all be mounted to the same location.
 `secret-store` or `cluster-store` must be defined to specify what existing SecretStore to pull data from. Only one can be defined.
 
+The plugin creates one ExternalSecret for each job, named after the job. After it creates the Job,
+it sets the Job as the owner of the ExternalSecret. When Kubernetes deletes the Job, for example
+after `ttlSecondsAfterFinished`, the garbage collector deletes the ExternalSecret and its Secret.
+The `pre-exit` hook also deletes the ExternalSecret. The agent's service account needs `get` on
+Jobs and `patch` on ExternalSecrets.
+
 Example
 ```yaml
 secret-store: vault-backend
