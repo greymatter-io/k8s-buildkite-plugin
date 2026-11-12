@@ -13,6 +13,7 @@ fi
 
 basedir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && cd .. && pwd )"
 source "${basedir}/lib/resolve-image.sh"
+source "${basedir}/lib/external-secret-owner.sh"
 
 # Ensure a name is a valid k8s resource name.
 function sanitize() {
@@ -120,6 +121,9 @@ function tail_logs {
   echo "0" > "$log_completion_marker_file"
 }
 
+# external_secret_created is 1 when this step creates an ExternalSecret.
+external_secret_created=0
+
 # External Secrets Handler
 if [[ -n $external_secrets || -n $external_secrets_list || -n $secret_store || -n $cluster_store ]]; then
   echo "--- :kubernetes: Creating Secrets"
@@ -166,6 +170,7 @@ if [[ -n $external_secrets || -n $external_secrets_list || -n $secret_store || -
   set +e
   echo "$external_secret_spec" | kubectl apply -f -
   set -e
+  external_secret_created=1
 
   echo "Waiting for Secret to become available"
   # Both waits share the 30 s budget that starts before the apply. Each kubectl
@@ -232,6 +237,10 @@ done
 if [[ "$job_apply_exit_code" != "0" ]]; then
   echo "Failed to apply job, exit code '$job_apply_exit_code'"
   exit "$job_apply_exit_code"
+fi
+
+if [[ "$external_secret_created" == "1" ]]; then
+  set_external_secret_owner "$job_name"
 fi
 
 if [[ $timeout -gt 0 ]]; then
